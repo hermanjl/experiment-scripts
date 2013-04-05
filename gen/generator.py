@@ -51,37 +51,43 @@ class Generator(object):
     This class also performs checks of parameter values and prints out help.
     All subclasses must implement _create_exp.
     '''
-    def __init__(self, scheduler, templates, options, params):
+    def __init__(self, name, templates, options, params):
+        self.__make_defaults(params)
+
         self.options = self.__make_options(params) + options
 
         self.__setup_params(params)
 
         self.params    = params
         self.template  = "\n".join([TP_RM] + templates)
-        self.scheduler = scheduler
+        self.scheduler = name
 
-    def __make_options(self, params):
-        '''Return generic Litmus options.'''
-
-        # Guess defaults using the properties of this computer
+    def __make_defaults(self, params):
+        '''Guess defaults using the properties of this computer'''
         if 'cpus' in params:
-            cpus = min(map(int, params['cpus']))
+            self.cpus = min(map(int, params['cpus']))
         else:
-            cpus = num_cpus()
+            self.cpus = num_cpus()
         try:
             config = get_config_option("RELEASE_MASTER") and True
         except:
             config = False
-        release_master = list(set([False, config]))
+        self.release_master = list(set([False, config]))
 
 
-        return [GenOption('tasks', int, range(cpus, 5*cpus, cpus),
-                              'Number of tasks per experiment.'),
-                GenOption('cpus', int, [cpus],
+    def __make_options(self, params):
+        '''Return generic Litmus options.'''
+        return [GenOption('num_tasks', int,
+                          range(self.cpus, 5*self.cpus, self.cpus),
+                          'Number of tasks per experiment.'),
+                GenOption('cpus', int, [self.cpus],
                           'Number of processors on target system.'),
-                GenOption('release_master', [True,False], release_master,
+                GenOption('release_master', [True,False], self.release_master,
                           'Redirect release interrupts to a single CPU.'),
                 GenOption('duration', float, [30], 'Experiment duration.')]
+
+    def _num_cpus(self):
+        return self.cpus
 
     @staticmethod
     def _dist_option(name, default, distribution, help):
@@ -118,6 +124,9 @@ class Generator(object):
             return self._create_taskset(params, periods, NAMED_UTILIZATIONS['uni-light'],
                                         max_util)
         return ts
+
+    def _out_dir(self):
+        return self.out_dir
 
     def _write_schedule(self, params):
         '''Write schedule file using current template for @params.'''
