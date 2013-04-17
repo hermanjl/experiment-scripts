@@ -256,7 +256,7 @@ COLOR_TYPES = ['scheduling', 'locking', 'unmanaged']
 
 class ColorMcGenerator(McGenerator):
     def __init__(self, params = {}):
-        super(ColorMcGenerator, self).__init__("COLOR-MC",
+        super(ColorMcGenerator, self).__init__("MC",
             templates=[TP_TYPE, TP_CHUNK, TP_COLOR_B, TP_COLOR_C],
             options=self.__make_options(),
             params=self.__extend_params(params))
@@ -313,10 +313,7 @@ class ColorMcGenerator(McGenerator):
                           'System page size.'),
                 GenOption('wss', [float, int], [.5],
                           'Task working set sizes. Can be expressed as a fraction ' +
-                          'of the cache.'),
-                GenOption('align_unmanaged', [True, False], [True],
-                          'Place all working sets of unmanaged task systems in '+
-                          'the same location, for maximum interference.')]
+                          'of the cache.')]
 
 
     def __get_wss_pages(self, params):

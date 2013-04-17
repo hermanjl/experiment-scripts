@@ -2,10 +2,12 @@
 from __future__ import print_function
 
 import config.config as conf
+import copy
 import os
 import parse.ft as ft
 import parse.sched as st
 import pickle
+import re
 import shutil as sh
 import sys
 import traceback
@@ -35,6 +37,9 @@ def parse_args():
     parser.add_option('-p', '--processors', default=max(cpu_count() - 1, 1),
                       type='int', dest='processors',
                       help='number of threads for processing')
+    parser.add_option('-s', '--scale-against', dest='scale_against',
+                      metavar='PARAM=VALUE', default="type=unmanaged",
+                      help='calculate task scaling factors against these configs')
 
     return parser.parse_args()
 
@@ -82,9 +87,9 @@ def load_exps(exp_dirs, cm_builder, force):
 
     return exps
 
-def parse_exp(exp_force):
+def parse_exp(exp_force_base):
     # Tupled for multiprocessing
-    exp, force  = exp_force
+    exp, force, base_table  = exp_force_base
 
     result_file = exp.work_dir + "/exp_point.pkl"
     should_load = not force and os.path.exists(result_file)
@@ -109,12 +114,38 @@ def parse_exp(exp_force):
             # Write scheduling statistics into result
             st.extract_sched_data(result, exp.path, exp.work_dir)
 
+            if base_table and exp.params in base_table:
+                base_exp = base_table[exp.params]
+                if base_exp != exp:
+                    st.extract_scaling_data(result, exp.path, base_exp.path)
+
             with open(result_file, 'wb') as f:
                 pickle.dump(result, f)
         except:
             traceback.print_exc()
 
     return (exp, result)
+
+def make_base_table(cmd_scale, col_map, exps):
+    if not cmd_scale:
+        return None
+
+    # Configuration key for task systems used to calculate task
+    # execution scaling factors
+    [(param, value)] = dict(re.findall("(.*)=(.*)", cmd_scale))
+
+    if param not in col_map:
+        raise IOError("Base column '%s' not present in any parameters!" % param)
+
+    base_map = copy.deepcopy(col_map)
+    base_table = TupleTable(base_map)
+
+    # Fill table with exps who we will scale against
+    for exp in exps:
+        if exp.params[param] == value:
+            base_table[exp.params] = exp
+
+    return base_table
 
 def main():
     opts, args = parse_args()
@@ -135,11 +166,13 @@ def main():
     col_map = builder.build()
     result_table = TupleTable(col_map)
 
+    base_table = make_base_table(opts.scale_against, col_map, exps)
+
     sys.stderr.write("Parsing data...\n")
 
     procs = min(len(exps), opts.processors)
     pool = Pool(processes=procs)
-    pool_args = zip(exps, [opts.force]*len(exps))
+    pool_args = zip(exps, [opts.force]*len(exps), [base_table]*len(exps))
     enum = pool.imap_unordered(parse_exp, pool_args, 1)
 
     try:

@@ -77,7 +77,7 @@ class Generator(object):
 
     def __make_options(self, params):
         '''Return generic Litmus options.'''
-        return [GenOption('num_tasks', int,
+        return [GenOption('tasks', int,
                           range(self.cpus, 5*self.cpus, self.cpus),
                           'Number of tasks per experiment.'),
                 GenOption('cpus', int, [self.cpus],
