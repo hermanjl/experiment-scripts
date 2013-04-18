@@ -20,6 +20,7 @@ def parse_overhead(result, overhead_bin, overhead, cycles, out_dir, err_file):
         os.remove(ovh_fname)
     ovh_file = open(ovh_fname, 'w')
 
+    err_file.write("Overhead is %s" % overhead)
     # Extract matching overhead events into a seperate file
     cmd  = [conf.BINS["ftsplit"], "-r", "-b", overhead, overhead_bin]
     ret  = subprocess.call(cmd, cwd=out_dir, stderr=err_file, stdout=ovh_file)
@@ -27,13 +28,14 @@ def parse_overhead(result, overhead_bin, overhead, cycles, out_dir, err_file):
 
     if ret:
         raise Exception("Failed (%d) with command: %s" % (ret, " ".join(cmd)))
-    if not size:
-        os.remove(ovh_fname)
+    #if not size:
+    #    os.remove(ovh_fname)
     if size and not ret:
         # Map and sort file for stats
         data = np.memmap(ovh_fname, dtype="float32", mode='c')
         data /= float(cycles) # Scale for processor speed
         data.sort()
+        print("Have %s of %s" % (len(data), overhead))
 
         m = Measurement("%s-%s" % (overhead_bin, overhead))
         m[Type.Max] = data[-1]
@@ -43,7 +45,7 @@ def parse_overhead(result, overhead_bin, overhead, cycles, out_dir, err_file):
 
         result[overhead] = m
 
-        os.remove(ovh_fname)
+        #os.remove(ovh_fname)
 
 def sort_ft(ft_file, err_file, out_dir):
     '''Create and return file with sorted overheads from @ft_file.'''
@@ -77,9 +79,10 @@ def extract_ft_data(result, data_dir, work_dir, cycles):
         sorted_bin = sort_ft(bin_file, err_file, work_dir)
 
         for event in conf.OVH_BASE_EVENTS:
+            print event
             parse_overhead(result, sorted_bin, event, cycles,
                            work_dir, err_file)
 
-        os.remove(sorted_bin)
+        #os.remove(sorted_bin)
 
     return True

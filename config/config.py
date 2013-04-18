@@ -3,7 +3,7 @@ import itertools
 from common import get_executable_hint,ft_freq
 
 '''Paths to binaries.'''
-BINS = {'rtspin'    : get_executable_hint('rtspin', 'liblitmus'),
+BINS = {'rtspin'    : get_executable_hint('rtspin', 'liblitmus', True),
         'release'   : get_executable_hint('release_ts', 'liblitmus'),
         'ftcat'     : get_executable_hint('ftcat', 'feather-trace-tools'),
         'ftsplit'   : get_executable_hint('ft2csv', 'feather-trace-tools'),
@@ -45,7 +45,7 @@ DEFAULTS = {'params_file' : 'params.py',
 SCHED_EVENTS = range(501, 513)
 
 '''Overhead events.'''
-OVH_BASE_EVENTS  = ['SCHED', 'RELEASE', 'SCHED2', 'TICK', 'CXS']
+OVH_BASE_EVENTS  = ['SCHED', 'RELEASE', 'SCHED2', 'TICK', 'CXS', 'LOCK', 'UNLOCK']
 OVH_ALL_EVENTS   = ["%s_%s" % (e, t) for (e,t) in
                     itertools.product(OVH_BASE_EVENTS, ["START","END"])]
 OVH_ALL_EVENTS  += ['RELEASE_LATENCY']
