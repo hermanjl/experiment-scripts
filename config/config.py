@@ -48,6 +48,6 @@ SCHED_EVENTS = range(501, 513)
 OVH_BASE_EVENTS  = ['SCHED', 'RELEASE', 'SCHED2', 'TICK', 'CXS', 'LOCK', 'UNLOCK']
 OVH_ALL_EVENTS   = ["%s_%s" % (e, t) for (e,t) in
                     itertools.product(OVH_BASE_EVENTS, ["START","END"])]
-OVH_ALL_EVENTS  += ['RELEASE_LATENCY']
+OVH_ALL_EVENTS  += ['RELEASE_LATENCY', 'LOCK_SUSPEND', 'LOCK_RESUME']
 # This event doesn't have a START and END
 OVH_BASE_EVENTS += ['RELEASE_LATENCY']

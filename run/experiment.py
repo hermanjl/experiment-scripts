@@ -157,6 +157,7 @@ class Experiment(object):
         succ = False
         try:
             self.__setup()
+            time.sleep(1)
 
             try:
                 self.__run_tasks()
@@ -196,12 +197,14 @@ class Experiment(object):
     def __setup(self):
         self.log("Writing %d proc entries" % len(self.proc_entries))
         map(methodcaller('write_proc'), self.proc_entries)
+        
+        self.log("Starting %d regular tracers" % len(self.regular_tracers))
+        map(methodcaller('start_tracing'), self.regular_tracers)
+
+        time.sleep(1)
 
         self.log("Switching to %s" % self.scheduler)
         lu.switch_scheduler(self.scheduler)
-
-        self.log("Starting %d regular tracers" % len(self.regular_tracers))
-        map(methodcaller('start_tracing'), self.regular_tracers)
 
         self.exec_out = open('%s/exec-out.txt' % self.working_dir, 'w')
         self.exec_err = open('%s/exec-err.txt' % self.working_dir, 'w')
