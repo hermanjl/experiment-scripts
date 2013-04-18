@@ -7,6 +7,8 @@ TP_TBASE = """#for $t in $task_set
 TP_GLOB_TASK = TP_TBASE.format("")
 TP_PART_TASK = TP_TBASE.format("-p $t.cpu")
 
+TP_DGL_TASK = TP_TBASE.format("dglspin -r $t.mask -p $t.cpu")
+
 class EdfGenerator(gen.Generator):
     '''Creates sporadic task sets with the most common Litmus options.'''
     def __init__(self, scheduler, templates, options, params):
@@ -74,3 +76,25 @@ class GedfGenerator(EdfGenerator):
     def __init__(self, params={}):
         super(GedfGenerator, self).__init__("GSN-EDF", [TP_GLOB_TASK],
                                             [], params)
+
+class PedfDglGenerator(EdfGenerator):
+    NR_RESOURCES_OPTION = gen.GenOption('nr_resources', int, [8],
+                                   'Number of resources.',)
+    NR_REQUESTED_OPTION = gen.GenOption('nr_requested', int, [2],
+                                   'Number of resources requested.',)
+
+    def __init__(self, params={}):
+        super(PedfDglGenerator, self).__init__("PSN-EDF",
+            [TP_DGL_TASK], [], params)
+
+
+    def _customize(self, taskset, exp_params):
+        start = 1 if exp_params['release_master'] else 0
+        # Random partition for now: could do a smart partitioning
+        for t in taskset:
+            t.cpu = random.randint(start, exp_params['cpus'] - 1)
+            resources = random.sample(xrange(exp_params['nr_resources']), exp_params['nr_requested'])
+            t.mask = list('0'*10)
+            for r in resources:
+                t.mask[r] = '1'
+            t.mask = ''.join(t.mask)

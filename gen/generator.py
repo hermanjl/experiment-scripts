@@ -72,7 +72,7 @@ class Generator(object):
             config = get_config_option("RELEASE_MASTER") and True
         except:
             config = False
-        release_master = list(set([False, config]))
+        release_master = list(set([False, bool(config)]))
 
 
         return [GenOption('tasks', int, range(cpus, 5*cpus, cpus),
