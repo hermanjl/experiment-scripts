@@ -9,7 +9,7 @@ BINS = {'rtspin'    : get_executable_hint('rtspin', 'liblitmus'),
         'ftsplit'   : get_executable_hint('ft2csv', 'feather-trace-tools'),
         'ftsort'    : get_executable_hint('ftsort', 'feather-trace-tools'),
         'st_trace'  : get_executable_hint('st_trace', 'feather-trace-tools'),
-        # Option, as not everyone uses kernelshark yet
+        # Optional, as not everyone uses kernelshark yet
         'trace-cmd' : get_executable_hint('trace-cmd', 'rt-kernelshark', True),
         # Optional, as sched_trace is not a publically supported repository
         'st_show'   : get_executable_hint('st_show', 'sched_trace', True)}
@@ -39,15 +39,24 @@ DEFAULTS = {'params_file' : 'params.py',
             'sched_file'  : 'sched.py',
             'duration'    : 10,
             'prog'        : 'rtspin',
+            'out-gen'     : 'exps',
+            'out-run'     : 'run-data',
+            'out-parse'   : 'parse-data',
+            'out-plot'    : 'plot-data',
             'cycles'      : ft_freq() or 2000}
+
 
 '''Default sched_trace events (this is all of them).'''
 SCHED_EVENTS = range(501, 513)
 
 '''Overhead events.'''
-OVH_BASE_EVENTS  = ['SCHED', 'RELEASE', 'SCHED2', 'TICK', 'CXS']
+OVH_BASE_EVENTS  = ['SCHED', 'RELEASE', 'SCHED2', 'TICK', 'CXS', 'LOCK', 'UNLOCK']
 OVH_ALL_EVENTS   = ["%s_%s" % (e, t) for (e,t) in
                     itertools.product(OVH_BASE_EVENTS, ["START","END"])]
 OVH_ALL_EVENTS  += ['RELEASE_LATENCY']
 # This event doesn't have a START and END
 OVH_BASE_EVENTS += ['RELEASE_LATENCY']
+
+# If a task is missing more than this many records, its measurements
+# are not included in sched_trace summaries
+MAX_RECORD_LOSS = .2

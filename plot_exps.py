@@ -6,7 +6,9 @@ import os
 import shutil as sh
 import sys
 import traceback
+
 from collections import namedtuple
+from config.config import DEFAULTS
 from multiprocessing import Pool, cpu_count
 from optparse import OptionParser
 from parse.col_map import ColMap,ColMapBuilder
@@ -17,7 +19,8 @@ def parse_args():
     parser = OptionParser("usage: %prog [options] [csv_dir]...")
 
     parser.add_option('-o', '--out-dir', dest='out_dir',
-                      help='directory for plot output', default='plot-data')
+                      help='directory for plot output',
+                      default=DEFAULTS['out-plot'])
     parser.add_option('-f', '--force', action='store_true', default=False,
                       dest='force', help='overwrite existing data')
     parser.add_option('-p', '--processors', default=max(cpu_count() - 1, 1),
@@ -139,21 +142,31 @@ def plot_dir(data_dir, out_dir, max_procs, force):
 
     sys.stderr.write('\n')
 
+def get_dirs(args):
+    if args:
+        return args
+    elif os.path.exists(DEFAULTS['out-parse']):
+        return [DEFAULTS['out-parse']]
+    else:
+        return os.getcwd()
+
 def main():
     opts, args = parse_args()
-    args = args or [os.getcwd()]
+    dirs = get_dirs(args)
 
     if opts.force and os.path.exists(opts.out_dir):
         sh.rmtree(opts.out_dir)
     if not os.path.exists(opts.out_dir):
         os.mkdir(opts.out_dir)
 
-    for dir in args:
-        if len(args) > 1:
+    for dir in dirs:
+        if len(dirs) > 1:
             out_dir = "%s/%s" % (opts.out_dir, os.path.split(dir)[1])
         else:
             out_dir = opts.out_dir
         plot_dir(dir, out_dir, opts.processors, opts.force)
+
+    sys.stderr.write("Plots saved in %s.\n" % opts.out_dir)
 
 if __name__ == '__main__':
     main()

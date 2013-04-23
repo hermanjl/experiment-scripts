@@ -2,22 +2,23 @@
 from __future__ import print_function
 
 import common as com
-import config.config as conf
 import os
 import re
 import shutil
 import sys
 import run.tracer as trace
 
+from config.config import PARAMS,DEFAULTS
 from collections import namedtuple
 from optparse import OptionParser
 from run.executable.executable import Executable
-from run.experiment import Experiment,ExperimentDone,ExperimentFailed,SystemCorrupted
+from run.experiment import Experiment,ExperimentDone,SystemCorrupted
 from run.proc_entry import ProcEntry
 
 '''Customizable experiment parameters'''
 ExpParams = namedtuple('ExpParams', ['scheduler', 'duration', 'tracers',
-                                     'kernel', 'config_options'])
+                                     'kernel', 'config_options', 'file_params',
+                                     'pre_script', 'post_script'])
 '''Comparison of requested versus actual kernel compile parameter value'''
 ConfigResult = namedtuple('ConfigResult', ['param', 'wanted', 'actual'])
 
@@ -56,12 +57,13 @@ def parse_args():
     parser.add_option('-d', '--duration', dest='duration', type='int',
                       help='duration (seconds) of tasks')
     parser.add_option('-o', '--out-dir', dest='out_dir',
-                      help='directory for data output', default=("%s/run-data"%os.getcwd()))
+                      help='directory for data output',
+                      default=DEFAULTS['out-run'])
     parser.add_option('-p', '--params', dest='param_file',
                       help='file with experiment parameters')
     parser.add_option('-c', '--schedule-file', dest='sched_file',
                       help='name of schedule files within directories',
-                      default=conf.DEFAULTS['sched_file'])
+                      default=DEFAULTS['sched_file'])
     parser.add_option('-f', '--force', action='store_true', default=False,
                       dest='force', help='overwrite existing data')
     parser.add_option('-j', '--jabber', metavar='username@domain',
@@ -96,7 +98,7 @@ def convert_data(data):
             proc = (loc, match.group("CONTENT"))
             procs.append(proc)
         else:
-            prog = match.group("PROG") or conf.DEFAULTS['prog']
+            prog = match.group("PROG") or DEFAULTS['prog']
             spin = (prog, match.group("ARGS"))
             tasks.append(spin)
 
@@ -112,8 +114,8 @@ def fix_paths(schedule, exp_dir, sched_file):
                 args = args.replace(arg, abspath)
                 break
             elif re.match(r'.*\w+\.[a-zA-Z]\w*', arg):
-                print("WARNING: non-existent file '%s' may be referenced:\n\t%s"
-                      % (arg, sched_file))
+                sys.stderr.write("WARNING: non-existent file '%s' " % arg +
+                                 "may be referenced:\n\t%s" % sched_file)
 
         schedule['task'][idx] = (task, args)
 
@@ -181,25 +183,23 @@ def verify_environment(exp_params):
             raise InvalidConfig(results)
 
 
-def run_parameter(exp_dir, out_dir, params, param_name):
-    '''Run an executable (arguments optional) specified as a configurable
-    @param_name in @params.'''
-    if conf.PARAMS[param_name] not in params:
+def run_script(script_params, exp, exp_dir, out_dir):
+    '''Run an executable (arguments optional)'''
+    if not script_params:
         return
-
-    script_params = params[conf.PARAMS[param_name]]
 
     # Split into arguments and program name
     if type(script_params) != type([]):
         script_params = [script_params]
-    script_name = script_params.pop(0)
 
+    exp.log("Running %s" % script_params.join(" "))
+
+    script_name = script_params.pop(0)
     script = com.get_executable(script_name, cwd=exp_dir)
 
-    out  = open('%s/%s-out.txt' % (out_dir, param_name), 'w')
-    prog = Executable(script, script_params,
+    out  = open('%s/%s-out.txt' % (out_dir, script_name), 'w')
+    prog = Executable(script, script_params, cwd=out_dir,
                       stderr_file=out, stdout_file=out)
-    prog.cwd = out_dir
 
     prog.execute()
     prog.wait()
@@ -207,27 +207,40 @@ def run_parameter(exp_dir, out_dir, params, param_name):
     out.close()
 
 
-def get_exp_params(cmd_scheduler, cmd_duration, file_params):
+def make_exp_params(cmd_scheduler, cmd_duration, sched_dir, param_file):
     '''Return ExpParam with configured values of all hardcoded params.'''
     kernel = copts = ""
 
-    scheduler = cmd_scheduler or file_params[conf.PARAMS['sched']]
-    duration  = cmd_duration  or file_params[conf.PARAMS['dur']] or\
-                conf.DEFAULTS['duration']
+    # Load parameter file
+    param_file = param_file or "%s/%s" % (sched_dir, DEFAULTS['params_file'])
+    if os.path.isfile(param_file):
+        fparams = com.load_params(param_file)
+    else:
+        fparams = {}
+
+    scheduler = cmd_scheduler or fparams[PARAMS['sched']]
+    duration  = cmd_duration  or fparams[PARAMS['dur']] or\
+                DEFAULTS['duration']
 
     # Experiments can specify required kernel name
-    if conf.PARAMS['kernel'] in file_params:
-        kernel = file_params[conf.PARAMS['kernel']]
+    if PARAMS['kernel'] in fparams:
+        kernel = fparams[PARAMS['kernel']]
 
     # Or required config options
-    if conf.PARAMS['copts'] in file_params:
-        copts = file_params[conf.PARAMS['copts']]
+    if PARAMS['copts'] in fparams:
+        copts = fparams[PARAMS['copts']]
 
     # Or required tracers
     requested = []
-    if conf.PARAMS['trace'] in file_params:
-        requested = file_params[conf.PARAMS['trace']]
+    if PARAMS['trace'] in fparams:
+        requested = fparams[PARAMS['trace']]
     tracers = trace.get_tracer_types(requested)
+
+    # Or scripts to run before and after experiments
+    def get_script(name):
+        return fparams[name] if name in fparams else None
+    pre_script  = get_script('pre')
+    post_script = get_script('post')
 
     # But only these two are mandatory
     if not scheduler:
@@ -236,59 +249,68 @@ def get_exp_params(cmd_scheduler, cmd_duration, file_params):
         raise IOError("No duration found in param file!")
 
     return ExpParams(scheduler=scheduler, kernel=kernel, duration=duration,
-                     config_options=copts, tracers=tracers)
+                     config_options=copts, tracers=tracers, file_params=fparams,
+                     pre_script=pre_script, post_script=post_script)
 
-
-def load_experiment(sched_file, cmd_scheduler, cmd_duration,
-                    param_file, out_dir, ignore, jabber):
+def run_experiment(name, sched_file, exp_params, out_dir,
+                   start_message, ignore, jabber):
     '''Load and parse data from files and run result.'''
     if not os.path.isfile(sched_file):
         raise IOError("Cannot find schedule file: %s" % sched_file)
 
     dir_name, fname = os.path.split(sched_file)
-    exp_name = os.path.split(dir_name)[1] + "/" + fname
     work_dir = "%s/tmp" % dir_name
 
-    # Load parameter file
-    param_file = param_file or \
-      "%s/%s" % (dir_name, conf.DEFAULTS['params_file'])
-    if os.path.isfile(param_file):
-        file_params = com.load_params(param_file)
-    else:
-        file_params = {}
+    procs, execs = load_schedule(name, sched_file, exp_params.duration)
 
-    # Create input needed by Experiment
-    exp_params = get_exp_params(cmd_scheduler, cmd_duration, file_params)
-    procs, execs = load_schedule(exp_name, sched_file, exp_params.duration)
-
-    exp = Experiment(exp_name, exp_params.scheduler, work_dir, out_dir,
+    exp = Experiment(name, exp_params.scheduler, work_dir, out_dir,
                      procs, execs, exp_params.tracers)
+
+    exp.log(start_message)
 
     if not ignore:
         verify_environment(exp_params)
 
-    run_parameter(dir_name, work_dir, file_params, 'pre')
+    run_script(exp_params.pre_script, exp, dir_name, work_dir)
 
     exp.run_exp()
 
-    run_parameter(dir_name, out_dir, file_params, 'post')
+    run_script(exp_params.post_script, exp, dir_name, out_dir)
 
     if jabber:
-        jabber.send("Completed '%s'" % exp_name)
+        jabber.send("Completed '%s'" % name)
 
     # Save parameters used to run experiment in out_dir
-    out_params = dict(file_params.items() +
-                      [(conf.PARAMS['sched'],  exp_params.scheduler),
-                       (conf.PARAMS['tasks'],  len(execs)),
-                       (conf.PARAMS['dur'],    exp_params.duration)])
+    out_params = dict(exp_params.file_params.items() +
+                      [(PARAMS['sched'],  exp_params.scheduler),
+                       (PARAMS['tasks'],  len(execs)),
+                       (PARAMS['dur'],    exp_params.duration)])
 
     # Feather-trace clock frequency saved for accurate overhead parsing
     ft_freq = com.ft_freq()
     if ft_freq:
-        out_params[conf.PARAMS['cycles']] = ft_freq
+        out_params[PARAMS['cycles']] = ft_freq
 
-    with open("%s/%s" % (out_dir, conf.DEFAULTS['params_file']), 'w') as f:
+    with open("%s/%s" % (out_dir, DEFAULTS['params_file']), 'w') as f:
         f.write(str(out_params))
+
+
+def get_exps(opts, args):
+    '''Return list of experiment files or directories'''
+    if args:
+        return args
+
+    # Default to sched_file > generated dirs
+    if os.path.exists(opts.sched_file):
+        sys.stderr.write("Reading schedule from %s.\n" % opts.sched_file)
+        return [opts.sched_file]
+    elif os.path.exists(DEFAULTS['out-gen']):
+        sys.stderr.write("Reading schedules from %s/*.\n" % DEFAULTS['out-gen'])
+        sched_dirs = os.listdir(DEFAULTS['out-gen'])
+        return ['%s/%s' % (DEFAULTS['out-gen'], d) for d in sched_dirs]
+    else:
+        sys.stderr.write("Run with -h to view options.\n");
+        sys.exit(1)
 
 
 def setup_jabber(target):
@@ -300,6 +322,7 @@ def setup_jabber(target):
         sys.stderr.write("Failed to import jabber. Is python-xmpp installed? " +
                          "Disabling instant messages.\n")
         return None
+
 
 def setup_email(target):
     try:
@@ -314,77 +337,92 @@ def setup_email(target):
     sys.stderr.write(message + " Disabling email message.\n")
     return None
 
+
+def make_paths(exp, out_base_dir, opts):
+    '''Translate experiment name to (schedule file, output directory) paths'''
+    path = "%s/%s" % (os.getcwd(), exp)
+    out_dir = "%s/%s" % (out_base_dir, os.path.split(exp.strip('/'))[1])
+
+    if not os.path.exists(path):
+        raise IOError("Invalid experiment: %s" % path)
+
+    if opts.force and os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+
+    if os.path.isdir(path):
+        sched_file = "%s/%s" % (path, opts.sched_file)
+    else:
+        sched_file = path
+
+    return sched_file, out_dir
+
+
 def main():
     opts, args = parse_args()
 
-    scheduler  = opts.scheduler
-    duration   = opts.duration
-    param_file = opts.param_file
-    out_base   = os.path.abspath(opts.out_dir)
+    exps = get_exps(opts, args)
 
-    args = args or [opts.sched_file]
+    jabber = setup_jabber(opts.jabber) if opts.jabber else None
+    email  = setup_email(opts.email)   if opts.email  else None
 
-    created = False
+    out_base = os.path.abspath(opts.out_dir)
+    created  = False
     if not os.path.exists(out_base):
         created = True
         os.mkdir(out_base)
 
-    ran  = 0
-    done = 0
-    succ = 0
-    failed = 0
-    invalid = 0
+    ran = done = succ = failed = invalid = 0
 
-    jabber = setup_jabber(opts.jabber) if opts.jabber else None
-    email  = setup_email(opts.email) if opts.email else None
-
-    for exp in args:
-        path = "%s/%s" % (os.getcwd(), exp)
-        out_dir = "%s/%s" % (out_base, os.path.split(exp.strip('/'))[1])
-
-        if not os.path.exists(path):
-            raise IOError("Invalid experiment: %s" % path)
-
-        if opts.force and os.path.exists(out_dir):
-            shutil.rmtree(out_dir)
-
-        if os.path.isdir(exp):
-            path = "%s/%s" % (path, opts.sched_file)
+    for i, exp in enumerate(exps):
+        sched_file, out_dir = make_paths(exp, out_base, opts)
+        sched_dir = os.path.split(sched_file)[0]
 
         try:
-            load_experiment(path, scheduler, duration, param_file,
-                            out_dir, opts.ignore, jabber)
+            start_message = "Loading experiment %d of %d." % (i+1, len(exps))
+            exp_params = make_exp_params(opts.scheduler, opts.duration,
+                                         sched_dir, opts.param_file)
+
+            run_experiment(exp, sched_file, exp_params, out_dir,
+                           start_message, opts.ignore, jabber)
+
             succ += 1
         except ExperimentDone:
+            sys.stderr.write("Experiment '%s' already completed " % exp +
+                             "at '%s'\n" % out_base)
             done += 1
-            print("Experiment '%s' already completed at '%s'" % (exp, out_base))
         except (InvalidKernel, InvalidConfig) as e:
+            sys.stderr.write("Invalid environment for experiment '%s'\n" % exp)
+            sys.stderr.write("%s\n" % e)
             invalid += 1
-            print("Invalid environment for experiment '%s'" % exp)
-            print(e)
         except KeyboardInterrupt:
-            print("Keyboard interrupt, quitting")
+            sys.stderr.write("Keyboard interrupt, quitting\n")
             break
         except SystemCorrupted as e:
-            print("System is corrupted! Fix state before continuing.")
-            print(e)
+            sys.stderr.write("System is corrupted! Fix state before continuing.\n")
+            sys.stderr.write("%s\n" % e)
             break
-        except ExperimentFailed:
-            print("Failed experiment %s" % exp)
+        except Exception as e:
+            sys.stderr.write("Failed experiment %s\n" % exp)
+            sys.stderr.write("%s\n" % e)
             failed += 1
 
         ran += 1
 
+    # Clean out directory if it failed immediately
     if not os.listdir(out_base) and created and not succ:
         os.rmdir(out_base)
 
-    message = "Experiments ran:\t%d of %d" % (ran, len(args)) +\
+    message = "Experiments ran:\t%d of %d" % (ran, len(exps)) +\
       "\n  Successful:\t\t%d" % succ +\
       "\n  Failed:\t\t%d" % failed +\
       "\n  Already Done:\t\t%d" % done +\
       "\n  Invalid Environment:\t%d" % invalid
 
     print(message)
+
+    if succ:
+        sys.stderr.write("Successful experiment data saved in %s.\n" %
+                         opts.out_dir)
 
     if email:
         email.send(message)

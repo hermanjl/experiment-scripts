@@ -1,8 +1,10 @@
 import gen.rv as rv
 
 from color import get_cache_info,CacheInfo,BlockColorScheme,RandomColorScheme,EvilColorScheme
-from common import try_get_config_option
+from common import try_get_config_option, log_once
 from gen.generator import GenOption,Generator,NAMED_UTILIZATIONS,NAMED_PERIODS
+from parse.col_map import ColMap
+from parse.tuple_table import TupleTable
 
 
 NAMED_SHARES = {
@@ -188,24 +190,24 @@ class McGenerator(Generator):
 
         return self._create_taskset(params, periods, utils, max_util)
 
-    def _customize(self, task_system, params):
-        pass
+    def _get_tasks(self, params):
+        return {'lvla': self.__create_lvla_sched(params),
+                'lvlb': self.__create_lvlb_sched(params),
+                'lvlc': self.__create_lvlc_sched(params)}
 
     def _create_exp(self, params):
         # Ugly way of doing it
         self.shares = self._create_dist('shares', params['shares'],
                                         NAMED_SHARES)
 
-        tasks = {'lvla': self.__create_lvla_sched(params),
-                 'lvlb': self.__create_lvlb_sched(params),
-                 'lvlc': self.__create_lvlc_sched(params)}
+        tasks = self._get_tasks(params)
 
         conf_options = {MC_OPT : 'y'}
         if params['timer_merging']:
             conf_options[TM_OPT] = 'y'
         if params['redirect']:
             if not params['release_master']:
-                print("Forcing release master option to enable redirection.")
+                log_once("Forcing release master option to enable redirection.")
                 params['release_master'] = 'y'
             conf_options[RD_OPT] = 'y'
         if params['slack_stealing']:
@@ -241,8 +243,11 @@ TP_TYPE = """#if $type != 'unmanaged'
 /proc/sys/litmus/color/preempt_cache{0}
 #end if"""
 
+# Always add some pages
+TP_ADD = """/proc/sys/litmus/color/add_pages{1}"""
+
 # Use special spin for color tasks
-TP_COLOR_BASE = """colorspin -y $t.id -x $t.colorcsv """
+TP_COLOR_BASE = """colorspin -y $t.id -x $t.colorcsv -q $t.wss -l $t.loops """
 
 TP_COLOR_B = TP_BASE.format("b", TP_COLOR_BASE + "-p $t.cpu ")
 TP_COLOR_C = TP_BASE.format("c", TP_COLOR_BASE)
@@ -255,11 +260,15 @@ TP_CHUNK = """#if $chunk_size > 0
 COLOR_TYPES = ['scheduling', 'locking', 'unmanaged']
 
 class ColorMcGenerator(McGenerator):
+    __SINGLE_PAGE_LOOP_MS = {'ringo': .023}
+
     def __init__(self, params = {}):
         super(ColorMcGenerator, self).__init__("MC",
-            templates=[TP_TYPE, TP_CHUNK, TP_COLOR_B, TP_COLOR_C],
+            templates=[TP_ADD, TP_TYPE, TP_CHUNK, TP_COLOR_B, TP_COLOR_C],
             options=self.__make_options(),
             params=self.__extend_params(params))
+
+        self.tasksets = None
 
     def __extend_params(self, params):
         '''Add in fixed mixed-criticality parameters.'''
@@ -277,6 +286,10 @@ class ColorMcGenerator(McGenerator):
         params['a_utils'] = 'bimo-light'
 
         return params
+
+    def __get_system_name(self):
+        import socket
+        return socket.gethostname().split(".")[0]
 
     def __make_system_info(self):
         info = get_cache_info()
@@ -298,20 +311,32 @@ class ColorMcGenerator(McGenerator):
             info = CacheInfo(cache, line=line, page=page,
                              ways=ways, sets=sets, colors=colors)
 
-        self.system = info
+        self.cache = info
+
+        hostname = self.__get_system_name()
+        if hostname not in self.__SINGLE_PAGE_LOOP_MS:
+            first_host = self.__SINGLE_PAGE_LOOP_MS.keys()[0]
+            log_once("hostname", "No timing info for host %s" % hostname +
+                     ", needed to calculate work done per task. Please get the "
+                     "timing info and add to __SINGLE_PAGE_LOOP_MS in " +
+                     "mc_generators.py. Assuming host %s." % first_host)
+            hostname = first_host
+        self.host = hostname
 
     def __make_options(self):
         self.__make_system_info()
 
         return [GenOption('type', COLOR_TYPES, COLOR_TYPES,
                           'Cache management type.'),
-                GenOption('chunk_size', float, [0], 'Chunk size.'),
-                GenOption('ways', int, [self.system.ways], 'Ways (associativity).'),
-                GenOption('colors', int, [self.system.colors],
+                GenOption('host', self.__SINGLE_PAGE_LOOP_MS.keys(), self.host,
+                          'System experiment will run on (for calculating work).'),
+                GenOption('chunk_size_ns', float, 0, 'Chunk size. 0 = no chunking.'),
+                GenOption('ways', int, self.cache.ways, 'Ways (associativity).'),
+                GenOption('colors', int, self.cache.colors,
                           'System colors (cache size / ways).'),
-                GenOption('page_size', int, [self.system.page],
+                GenOption('page_size', int, self.cache.page,
                           'System page size.'),
-                GenOption('wss', [float, int], [.5],
+                GenOption('wss', [float, int], .5,
                           'Task working set sizes. Can be expressed as a fraction ' +
                           'of the cache.')]
 
@@ -346,14 +371,37 @@ class ColorMcGenerator(McGenerator):
             for color, replicas in task.colors.iteritems():
                 f.write("%d, %d\n" % (color, replicas))
 
+    def __get_loops(self, task, pages, system):
+        all_pages_loop = self.__SINGLE_PAGE_LOOP_MS[system] * pages
+        return int(task.cost / all_pages_loop) + 1
+
+    def _get_tasks(self, params):
+        # Share tasksets amongst experiments with different types but
+        # identical other parameters for proper comparisons
+        if self.tasksets == None:
+            fields = params.keys()
+            fields.remove("type")
+            self.tasksets = TupleTable( ColMap(fields), lambda:None )
+
+        if params not in self.tasksets:
+            ts = super(ColorMcGenerator, self)._get_tasks(params)
+            self.tasksets[params] = ts
+
+        return self.tasksets[params]
+
     def _customize(self, task_system, params):
         '''Add coloring properties to the mixed-criticality task system.'''
+        pages_needed = self.__get_wss_pages(params)
+        real_wss = params['page_size'] * pages_needed
+
         # Every task needs a unique id for coloring and wss walk order
         all_tasks = []
         for level, tasks in task_system.iteritems():
             all_tasks += tasks
         for i, task in enumerate(all_tasks):
-            task.id = i
+            task.id  = i
+            task.wss = real_wss
+            task.loops = self.__get_loops(task, pages_needed, params['host'])
 
         c = params['colors']
         w = params['ways']
@@ -364,8 +412,6 @@ class ColorMcGenerator(McGenerator):
         else:
             srt_colorer = RandomColorScheme(c, w)
             hrt_colorer = BlockColorScheme(c, w, way_first=True)
-
-        pages_needed = self.__get_wss_pages(params)
 
         hrt_colorer.color(task_system['lvlb'], pages_needed)
         srt_colorer.color(task_system['lvlc'], pages_needed)

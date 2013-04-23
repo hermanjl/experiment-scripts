@@ -193,3 +193,20 @@ def is_device(dev):
         return False
     mode = os.stat(dev)[stat.ST_MODE]
     return not (not mode & stat.S_IFCHR)
+
+__logged = []
+
+def set_logged_list(logged):
+    global __logged
+    __logged = logged
+
+def log_once(id, msg = None, indent = True):
+    global __logged
+
+    msg = msg if msg else id
+
+    if id not in  __logged:
+        __logged += [id]
+        if indent:
+            msg = '   ' + msg.strip('\t').replace('\n', '\n\t')
+        sys.stderr.write('\n' + msg.strip('\n') + '\n')

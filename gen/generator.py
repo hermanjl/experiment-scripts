@@ -5,7 +5,7 @@ import schedcat.generator.tasks as tasks
 import shutil as sh
 
 from Cheetah.Template import Template
-from common import get_config_option,num_cpus,recordtype
+from common import get_config_option,num_cpus,recordtype,log_once
 from config.config import DEFAULTS,PARAMS
 from gen.dp import DesignPointGenerator
 from parse.col_map import ColMapBuilder
@@ -69,11 +69,10 @@ class Generator(object):
         else:
             self.cpus = num_cpus()
         try:
-            config = get_config_option("RELEASE_MASTER") and True
+            rm_config  = get_config_option("RELEASE_MASTER") and True
         except:
-            config = False
-        self.release_master = list(set([False, config]))
-
+            rm_config  = False
+        self.release_master = list(set([False, bool(rm_config)]))
 
     def __make_options(self, params):
         '''Return generic Litmus options.'''
@@ -116,11 +115,11 @@ class Generator(object):
             ts = tg.make_task_set(max_tasks = params['tasks'], max_util=max_util)
             tries += 1
         if len(ts) != params['tasks']:
-            print(("Only created task set of size %d < %d for params %s. " +
-                   "Switching to light utilization.") %
-                  (len(ts), params['tasks'], params))
-            print("Switching to light util. This usually means the " +
-                  "utilization distribution is too agressive.")
+            log_once("only", ("Only created task set of size %d < %d for " +
+                              "params %s. Switching to light utilization.") %
+                              (len(ts), params['tasks'], params))
+            log_once("light", "Switching to light util. This usually means " +
+                     "the utilization distribution is too agressive.")
             return self._create_taskset(params, periods, NAMED_UTILIZATIONS['uni-light'],
                                         max_util)
         return ts
@@ -156,7 +155,10 @@ class Generator(object):
         '''Set default parameter values and check that values are valid.'''
         for option in self.options:
             if option.name not in params:
-                params[option.name] = option.default
+                val = option.default
+                val = val if type(val) == type([]) else [val]
+
+                params[option.name] = val
             else:
                 option.hidden = True
             params[option.name] = self._check_value(option.name,

@@ -38,8 +38,8 @@ class LinuxTracer(Tracer):
         stdout = open('%s/trace-cmd-stdout.txt' % self.output_dir, 'w')
         stderr = open('%s/trace-cmd-stderr.txt' % self.output_dir, 'w')
 
-        execute = Executable(conf.BINS['trace-cmd'], extra_args, stdout, stderr)
-        execute.cwd = output_dir
+        execute = Executable(conf.BINS['trace-cmd'], extra_args,
+                             stdout, stderr, output_dir)
         self.bins.append(execute)
 
     @staticmethod

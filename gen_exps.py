@@ -7,6 +7,7 @@ import re
 import shutil as sh
 import sys
 
+from config.config import DEFAULTS
 from optparse import OptionParser
 
 def parse_args():
@@ -15,7 +16,7 @@ def parse_args():
 
     parser.add_option('-o', '--out-dir', dest='out_dir',
                       help='directory for data output',
-                      default=("%s/exps"%os.getcwd()))
+                      default=("%s/%s"% (os.getcwd(), DEFAULTS['out-gen'])))
     parser.add_option('-f', '--force', action='store_true', default=False,
                       dest='force', help='overwrite existing data')
     parser.add_option('-n', '--num-trials', default=1, type='int', dest='trials',
@@ -51,9 +52,9 @@ def main():
     if opts.described != None:
         for generator in opts.described.split(','):
             if generator not in gen.get_generators():
-                print("No generator '%s'" % generator)
+                sys.stderr.write("No generator '%s'\n" % generator)
             else:
-                sys.stdout.write("Generator '%s', " % generator)
+                print("Generator '%s', " % generator)
                 gen.get_generators()[generator]().print_help()
     if opts.list_gens or opts.described:
         return 0
@@ -85,7 +86,7 @@ def main():
         if gen_name not in gen.get_generators():
             raise ValueError("Invalid generator '%s'" % gen_name)
 
-        print("Creating experiments using %s generator..." % gen_name)
+        sys.stderr.write("Creating experiments with %s generator...\n" % gen_name)
 
         params = dict(gen_params.items() + global_params.items())
         clazz  = gen.get_generators()[gen_name]
@@ -93,6 +94,8 @@ def main():
         generator = clazz(params=params)
 
         generator.create_exps(opts.out_dir, opts.force, opts.trials)
+
+    sys.stderr.write("Experiments saved in %s.\n" % opts.out_dir)
 
 if __name__ == '__main__':
     main()

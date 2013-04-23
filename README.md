@@ -45,7 +45,7 @@ gen_exps.py --> [exps/*] --> run_exps.py  --> [run-data/*] --.
 3. Parse binary data in `run-data/` using `parse_exps.py`, generating csv files in `parse-data/`.
 4. Plot `parse-data` using `plot_exps.py`, generating pdfs in `plot-data/`.
 
-Each of these scripts will be described. The `run_exps.py` script is first because `gen_exps.py` creates schedule files which depend on `run_exps.py`.
+Each of these scripts will be described. The `run_exps.py` script is first because `gen_exps.py` creates schedule files that depend on `run_exps.py`.
 
 
 ## run_exps.py
@@ -74,7 +74,7 @@ OUT_DIR/[SCHED_(FILE|DIR)/]
 
 *Defaults*: `SCHED_FILE = sched.py`, `PARAM_FILE = params.py`, `DURATION = 30`, `OUT_DIR = run-data/`
 
-This script reads *schedule files* (described below) and executes real-time task systems, recording all overhead, logging, and trace data which is enabled in the system (unless a specific set of tracers is specified in the parameter file, see below). For example, if trace logging is enabled, rt-kernelshark is found in the path, but feather-trace is disabled (the devices are not present), only trace logs and rt-kernelshark logs will be recorded.
+This script reads *schedule files* (described below) and executes real-time task systems, recording all overhead, logging, and trace data that is enabled in the system (unless a specific set of tracers is specified in the parameter file, see below). For example, if trace logging is enabled, rt-kernelshark is found in the path, but feather-trace is disabled (the devices are not present), only trace logs and rt-kernelshark logs will be recorded.
 
 When `run_exps.py` is running a schedule file, temporary data is saved in a `tmp` directory in the same directory as the schedule file. When execution completes, this data is moved into a directory under the `run_exps.py` output directory (default: `run-data/`, can be changed with the `-o` option). When multiple schedules are run, each schedule's data is saved in a unique directory under the output directory.
 
@@ -192,7 +192,7 @@ $ cat post-out.txt
 Experiment ends!
 ```
 
-Finally, you can specify system properties in `params.py` which the environment must match for the experiment to run. These are useful if you have a large batch of experiments which must be run under different kernels or kernel configurations. The first property is a regular expression for the name of the kernel:
+Finally, you can specify system properties in `params.py`, which the environment must match for the experiment to run. These are useful if you have a large batch of experiments that must be run under different kernels or kernel configurations. The first property is a regular expression for the name of the kernel:
 
 ```bash
 $ uname -r
@@ -219,7 +219,7 @@ The second property is kernel configuration options. These assume the configurat
 }
 ```
 
-The third property is required tracers. The `tracers` property lets the user specify only those tracers they want to run with an experiment, as opposed to starting every available tracer (the default). If any of these specified tracers cannot be enabled, e.g. the kernel was not compiled with feather-trace support, the experiment will not run. The following example gives an experiment which will not run unless all four tracers are enabled:
+The third property is required tracers. The `tracers` property lets the user specify only those tracers they want to run with an experiment, as opposed to starting every available tracer (the default). If any of these specified tracers cannot be enabled, e.g. the kernel was not compiled with feather-trace support, the experiment will not run. The following example gives an experiment that will not run unless all four tracers are enabled:
 ```python
 {'tracers':['kernelshark', 'log', 'sched', 'overhead']}
 ```
@@ -227,15 +227,15 @@ The third property is required tracers. The `tracers` property lets the user spe
 ## gen_exps.py
 *Usage*: `gen_exps.py [options] [files...] [generators...] [param=val[,val]...]`
 
-*Output*: `OUT_DIR/EXP_DIRS` which each contain `sched.py` and `params.py`
+*Output*: `OUT_DIR/EXP_DIRS` that each contain `sched.py` and `params.py`
 
 *Defaults*: `generators = G-EDF P-EDF C-EDF`, `OUT_DIR = exps/`
 
-This script uses *generators*, one for each LITMUS scheduler supported, which each have different properties which can be varied to generate different types of schedules. Each of these properties has a default value which can be modified on the command line for quick and easy experiment generation.
+This script uses *generators*, one for each LITMUS scheduler supported, which each have different properties that can be varied to generate different types of schedules. Each of these properties has a default value that can be modified on the command line for quick and easy experiment generation.
 
-This script as written should be used to create debugging task sets, but not for creating task sets for experiments shown in papers. That is because the safety features of `run_exps.py` described above (`uname`, `config-options`) are not used here. If you are creating experiments for a paper, you should create your own generator which outputs values for the `config-options` required for your plugin so that you cannot ruin your experiments at run time. Trust me, you will.
+This script as written should be used to create debugging task sets, but not for creating task sets for experiments shown in papers. That is because the safety features of `run_exps.py` described above (`uname`, `config-options`) are not used here. If you are creating experiments for a paper, you should create your own generator that outputs values for the `config-options` required for your plugin so that you cannot ruin your experiments at run time. Trust me, you will.
 
-The `-l` option lists the supported generators which can be specified:
+The `-l` option lists the supported generators that can be specified:
 
 ```bash
 $ gen_exps.py -l
@@ -287,7 +287,7 @@ sched=PSN-EDF_num-tasks=24/  sched=PSN-EDF_num-tasks=26/
 sched=PSN-EDF_num-tasks=28/  sched=PSN-EDF_num-tasks=30/
 ```
 
-The generator will create a different directory for each possible configuration of the parameters. Each parameter which is varied is included in the name of the schedule directory. For example, to vary the number of CPUs but not the number of tasks:
+The generator will create a different directory for each possible configuration of the parameters. Each parameter that is varied is included in the name of the schedule directory. For example, to vary the number of CPUs but not the number of tasks:
 
 ```bash
 $ gen_exps.py -f tasks=24 cpus=3,6 P-EDF
@@ -319,9 +319,9 @@ where the `data_dirx` contain feather-trace and sched-trace data, e.g. `ft.bin`,
 
 *Output*: print out all parsed data or `OUT_FILE` where `OUT_FILE` is a python map of the data or `OUT_DIR/[FIELD]*/[PARAM]/[TYPE]/[TYPE]/[LINE].csv`, depending on input.
 
-The goal is to create csv files which record how varying `PARAM` changes the value of `FIELD`. Only `PARAM`s which vary are considered.
+The goal is to create csv files that record how varying `PARAM` changes the value of `FIELD`. Only `PARAM`s that vary are considered.
 
-`FIELD` is a parsed value, e.g. 'RELEASE' overhead or 'miss-ratio'. `PARAM` is a parameter which we are going to vary, e.g. 'tasks'. A single `LINE` is created for every configuration of parameters other than `PARAM`.
+`FIELD` is a parsed value, e.g. 'RELEASE' overhead or 'miss-ratio'. `PARAM` is a parameter that we are going to vary, e.g. 'tasks'. A single `LINE` is created for every configuration of parameters other than `PARAM`.
 
 `TYPE` is the statistic of the measurement, i.e. Max, Min, Avg, or Var[iance]. The two types are used to differentiate between measurements across tasks in a single taskset, and measurements across all tasksets. E.g. `miss-ratio/*/Max/Avg` is the maximum of all the average miss ratios for each task set, while `miss-ratio/*/Avg/Max` is the average of the maximum miss ratios for each task set.
 
@@ -389,7 +389,7 @@ line.csv
 
 The second command will also have run faster than the first. This is because `parse_exps.py` will save the data it parses in `tmp/` directories before it attempts to sort it into csvs. Parsing takes far longer than sorting, so this saves a lot of time. The `-f` flag can be used to re-parse files and overwrite this saved data.
 
-All output from the *feather-trace-tools* programs used to parse data is stored in the `tmp/` directories created in the input directories.  If the *sched_trace* repo is found in the users `PATH`, `st_show` will be used to create a human-readable version of the sched-trace data which will also be stored there.
+All output from the *feather-trace-tools* programs used to parse data is stored in the `tmp/` directories created in the input directories.  If the *sched_trace* repo is found in the users `PATH`, `st_show` will be used to create a human-readable version of the sched-trace data that will also be stored there.
 
 ## plot_exps.py
 *Usage*: `plot_exps.py [OPTIONS] [CSV_DIR]...`

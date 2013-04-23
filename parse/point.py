@@ -133,6 +133,10 @@ class ExpPoint(object):
     def get_stats(self):
         return self.stats.keys()
 
+    def __bool__(self):
+        return bool(self.stats)
+    __nonzero__ = __bool__
+
 
 class SummaryPoint(ExpPoint):
     def __init__(self, id="", points=[], typemap = default_typemap):

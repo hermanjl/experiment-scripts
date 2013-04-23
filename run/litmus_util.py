@@ -20,7 +20,7 @@ def switch_scheduler(switch_to_in):
     with open('/proc/litmus/active_plugin', 'w') as active_plugin:
         subprocess.Popen(["echo", switch_to], stdout=active_plugin)
 
-    # it takes a bit to do the switch, sleep an arbitrary amount of time
+    # It takes a bit to do the switch, sleep an arbitrary amount of time
     time.sleep(2)
 
     cur_plugin = scheduler()
@@ -29,24 +29,21 @@ def switch_scheduler(switch_to_in):
                         (switch_to, cur_plugin))
 
 def waiting_tasks():
-    reg = re.compile(r'^ready.*?(?P<READY>\d+)$', re.M)
+    reg = re.compile(r'^ready.*?(?P<WAITING>\d+)$', re.M)
     with open('/proc/litmus/stats', 'r') as f:
         data = f.read()
 
     # Ignore if no tasks are waiting for release
-    match = re.search(reg, data)
-    ready = match.group("READY")
+    waiting = re.search(reg, data).group("WAITING")
 
-    return 0 if not ready else int(ready)
+    return 0 if not waiting else int(waiting)
 
 def all_tasks():
     reg = re.compile(r'^real-time.*?(?P<TASKS>\d+)$', re.M)
     with open('/proc/litmus/stats', 'r') as f:
         data = f.read()
 
-    # Ignore if no tasks are waiting for release
-    match = re.search(reg, data)
-    ready = match.group("TASKS")
+    ready = re.search(reg, data).group("TASKS")
 
     return 0 if not ready else int(ready)
 

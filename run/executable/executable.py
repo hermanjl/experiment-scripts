@@ -6,9 +6,10 @@ from common import get_executable
 class Executable(object):
     '''Parent object that represents an executable for use in task-sets.'''
 
-    def __init__(self, exec_file, extra_args=None, stdout_file = None, stderr_file = None):
+    def __init__(self, exec_file, extra_args=None, stdout_file = None,
+                 stderr_file = None, cwd = None):
         self.exec_file = get_executable(exec_file)
-        self.cwd = None
+        self.cwd = cwd
         self.stdout_file = stdout_file
         self.stderr_file = stderr_file
         self.sp = None
@@ -57,6 +58,9 @@ class Executable(object):
 
     def interrupt(self):
         self.sp.send_signal(signal.SIGINT)
+
+    def poll(self):
+        return self.sp.poll()
 
     def terminate(self):
         '''Send the terminate signal to the binary.'''

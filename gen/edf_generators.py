@@ -16,10 +16,10 @@ class EdfGenerator(gen.Generator):
 
     def __make_options(self):
         '''Return generic EDF options.'''
-        return [gen.Generator._dist_option('utils', ['uni-medium'],
+        return [gen.Generator._dist_option('utils', 'uni-medium',
                                            gen.NAMED_UTILIZATIONS,
                                            'Task utilization distributions.'),
-                gen.Generator._dist_option('periods', ['harmonic'],
+                gen.Generator._dist_option('periods', 'harmonic',
                                            gen.NAMED_PERIODS,
                                            'Task period distributions.')]
 
@@ -50,10 +50,22 @@ class PartitionedGenerator(EdfGenerator):
             templates + [TP_PART_TASK], options, params)
 
     def _customize(self, taskset, exp_params):
-        start = 1 if exp_params['release_master'] else 0
-        # Random partition for now: could do a smart partitioning
+        cpus  = exp_params['cpus']
+        start = 0
+        if exp_params['release_master']:
+            cpus -= 1
+            start = 1
+
+        # Partition using worst-fit for most even distribution
+        utils = [0]*cpus
+        tasks = [0]*cpus
         for t in taskset:
-            t.cpu = random.randint(start, exp_params['cpus'] - 1)
+            t.cpu = utils.index(min(utils))
+            utils[t.cpu] += t.utilization()
+            tasks[t.cpu] += 1
+
+            # Increment by one so release master has no tasks
+            t.cpu += start
 
 class PedfGenerator(PartitionedGenerator):
     def __init__(self, params={}):
@@ -61,7 +73,7 @@ class PedfGenerator(PartitionedGenerator):
 
 class CedfGenerator(PartitionedGenerator):
     TP_CLUSTER = "plugins/C-EDF/cluster{$level}"
-    CLUSTER_OPTION = gen.GenOption('level', ['L2', 'L3', 'All'], ['L2'],
+    CLUSTER_OPTION = gen.GenOption('level', ['L2', 'L3', 'All'], 'L2',
                                    'Cache clustering level.',)
 
     def __init__(self, params={}):

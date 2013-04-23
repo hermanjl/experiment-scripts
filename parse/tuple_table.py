@@ -13,13 +13,17 @@ class TupleTable(object):
     def get_col_map(self):
         return self.col_map
 
+    def __bool__(self):
+        return bool(self.table)
+    __nonzero__ = __bool__
+
     def __getitem__(self, kv):
         key = self.col_map.get_key(kv)
         return self.table[key]
 
     def __setitem__(self, kv, value):
         key = self.col_map.get_key(kv)
-        self.table[key]
+        self.table[key] = value
 
     def __contains__(self, kv):
         key = self.col_map.get_key(kv)
