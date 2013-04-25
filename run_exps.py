@@ -356,10 +356,8 @@ def make_paths(exp, out_base_dir, opts):
 
     return sched_file, out_dir
 
-
 def main():
     opts, args = parse_args()
-
     exps = get_exps(opts, args)
 
     jabber = setup_jabber(opts.jabber) if opts.jabber else None

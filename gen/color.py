@@ -29,19 +29,22 @@ class BlockColorScheme(ColorScheme):
         if self.way_first:
             # Way first means maximize ways
             pages_per_color = min(self.ways, pages_needed)
-            colors_per_task = int(ceil(pages_needed/pages_per_color))
+            colors_per_task = int(ceil(float(pages_needed)/pages_per_color))
         else:
             # Color first means maximize colors
             colors_per_task = min(self.colors, pages_needed)
-            pages_per_color = int(ceil(pages_needed/colors_per_task))
+            pages_per_color = int(ceil(float(pages_needed)/colors_per_task))
 
         curr_color = 0
         for cpu, tasks in cpus.iteritems():
             # All tasks on a CPU have the same coloring scheme
             cpu_colors = defaultdict(int)
             for _ in xrange(colors_per_task):
-                curr_color = (curr_color + 1) % self.colors
                 cpu_colors[curr_color] = pages_per_color
+                curr_color = (curr_color + 1) % self.colors
+
+            if sum(cpu_colors.values()) < pages_needed:
+                raise Exception("Failed to block color cpu, %s" % cpu_colors)
 
             for t in tasks:
                 t.colors = cpu_colors
@@ -79,7 +82,6 @@ class EvilColorScheme(ColorScheme):
 
         for t in tasks:
             t.colors = colors
-
 
 INFO_FIELDS = ['cache', 'line', 'page', 'ways', 'sets', 'colors']
 INFO_PROC   = '/proc/sys/litmus/color/cache_info'

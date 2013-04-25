@@ -50,7 +50,15 @@ DEFAULTS = {'params_file' : 'params.py',
 SCHED_EVENTS = range(501, 513)
 
 '''Overhead events.'''
-OVH_BASE_EVENTS  = ['SCHED', 'RELEASE', 'SCHED2', 'TICK', 'CXS', 'LOCK', 'UNLOCK']
+OVH_BASE_EVENTS  = ['SCHED', 'RELEASE', 'SCHED2', 'TICK', 'CXS',
+                    'SEND_RESCHED', 'LOCK', 'UNLOCK']
+
+'''Mixed-criticality overheads.'''
+MC_EVENTS  = ['LVL{}_SCHED', 'LVL{}_RELEASE']
+MC_LEVELS  = ['A', 'B', 'C']
+OVH_BASE_EVENTS += [s.format(l) for (l,s) in
+                itertools.product(MC_LEVELS, MC_EVENTS)]
+
 OVH_ALL_EVENTS   = ["%s_%s" % (e, t) for (e,t) in
                     itertools.product(OVH_BASE_EVENTS, ["START","END"])]
 OVH_ALL_EVENTS  += ['RELEASE_LATENCY']
@@ -60,3 +68,6 @@ OVH_BASE_EVENTS += ['RELEASE_LATENCY']
 # If a task is missing more than this many records, its measurements
 # are not included in sched_trace summaries
 MAX_RECORD_LOSS = .2
+
+# Number of pages needed for each color before experiments are run
+PAGES_PER_COLOR = 1024

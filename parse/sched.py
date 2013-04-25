@@ -26,8 +26,10 @@ ScaleData = namedtuple('ScaleData', ['reg_tasks', 'base_tasks'])
 
 class TimeTracker:
     '''Store stats for durations of time demarcated by sched_trace records.'''
-    def __init__(self):
+    def __init__(self, join_job = False):
         self.begin = self.avg = self.max = self.num = self.next_job = 0
+
+        self.join_job = join_job
 
         # Count of times the job in start_time matched that in store_time
         self.matches = 0
@@ -39,9 +41,12 @@ class TimeTracker:
         # any task is always skipped
         self.last_record = None
 
+        self.stored_dur = 0
+
     def store_time(self, next_record):
         '''End duration of time.'''
-        dur = (self.last_record.when - self.begin) if self.last_record else -1
+        dur  = (self.last_record.when - self.begin) if self.last_record else -1
+        dur += self.stored_dur
 
         if self.next_job == next_record.job:
             self.last_record = next_record
@@ -49,13 +54,16 @@ class TimeTracker:
             if self.last_record:
                 self.matches += 1
 
-            if dur > 0:
+            if self.join_job and self.next_job == self.last_record.job:
+                self.stored_dur += dur
+            elif dur > 0:
                 self.max  = max(self.max, dur)
                 self.avg *= float(self.num / (self.num + 1))
                 self.num += 1
                 self.avg += dur / float(self.num)
 
                 self.begin = 0
+                self.stored_dur = 0
                 self.next_job   = 0
         else:
             self.disjoints += 1
@@ -69,7 +77,6 @@ class TimeTracker:
                 self.begin = time
 
         self.next_job = record.job
-
 
 class LeveledArray(object):
     """Groups statistics by the level of the task to which they apply"""

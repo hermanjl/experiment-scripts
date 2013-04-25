@@ -1,8 +1,13 @@
+import config.config as conf
 import os
-import time
+import re
 import run.litmus_util as lu
 import shutil as sh
+import sys
+import time
+
 from operator import methodcaller
+from run.proc_entry import ProcEntry
 
 class ExperimentException(Exception):
     '''Used to indicate when there are problems with an experiment.'''
@@ -16,6 +21,10 @@ class ExperimentDone(ExperimentException):
 
 class SystemCorrupted(Exception):
     pass
+
+PROC_ADD_PAGES = '/proc/sys/litmus/color/add_pages'
+PROC_NR_PAGES  = '/proc/sys/litmus/color/nr_pages'
+REG_NR_PAGES   = re.compile(r'\s*\d+\s*:\s*(\d+)', re.M)
 
 class Experiment(object):
     '''Execute one task-set and save the results. Experiments have unique IDs.'''
@@ -100,7 +109,7 @@ class Experiment(object):
         for e in self.executables:
             status = e.poll()
             if status != None and status:
-                err_msg = "Task %s failed with status: %s" % (e.wait(), status)
+                err_msg = "Task %s failed with status: %s" % (e, status)
                 msgs += [err_msg]
 
         if msgs:
@@ -108,7 +117,7 @@ class Experiment(object):
             # up the terminal
             if len(msgs) > 3:
                 num_errs = len(msgs) - 3
-                msgs = msgs[0:4] + ["...%d more task errors..." % num_errs]
+                msgs = msgs[0:3] + ["...%d more task errors..." % num_errs]
 
             out_name = self.__strip_path(self.exec_out.name)
             err_name = self.__strip_path(self.exec_err.name)
@@ -138,7 +147,7 @@ class Experiment(object):
             now_ready = lu.waiting_tasks()
             if now_ready != num_ready:
                 wait_start = time.time()
-                num_ready  = lu.now_ready
+                num_ready  = now_ready
 
     def __run_tasks(self):
         self.log("Starting %d tasks" % len(self.executables))
@@ -197,10 +206,66 @@ class Experiment(object):
         if msgs:
             raise SystemCorrupted("\n".join(msgs))
 
+    def __get_nr_pages(self):
+        with open(PROC_NR_PAGES, 'r') as f:
+            data = f.read()
+
+        pages = map(int, REG_NR_PAGES.findall(data))
+        return pages
+
+    def __create_colored_pages(self):
+        if self.scheduler != 'COLOR' and self.scheduler != 'MC':
+            return
+
+        self.log("Creating colored pages...")
+
+        # On system startup, it takes some time for these entries to appear
+        start = time.time()
+        while not os.path.exists(PROC_ADD_PAGES) or\
+              not os.path.exists(PROC_NR_PAGES):
+
+            if time.time() - start > 30.0:
+                raise Exception("Cannot find %s or %s!" %
+                                (PROC_ADD_PAGES, PROC_NR_PAGES))
+            time.sleep(1)
+
+        start_pages = self.__get_nr_pages()
+        num_started = sum(start_pages)
+        num_created = 0
+        num_needed  = len(start_pages) * conf.PAGES_PER_COLOR
+
+        ProcEntry(PROC_ADD_PAGES, 1).write_proc()
+
+        # Spin until pages are done adding
+        start = time.time()
+        while True:
+            if time.time() - start > 30.0:
+                raise Exception("Too much time spent creating pages!")
+
+            pages = sum(self.__get_nr_pages())
+
+            if pages == num_needed:
+                break
+            else:
+                if pages > num_created:
+                    num_created = pages
+                    start = time.time()
+                sys.stderr.write('\rPages needed: {0: 4}'.format(num_needed - pages))
+
+            # Unknown why this has to be done again....
+            ProcEntry(PROC_ADD_PAGES, 1).write_proc()
+            time.sleep(1)
+
+        if num_created:
+            sys.stderr.write('\n')
+        self.log("Created %d colored pages." % (num_needed - num_started))
+
     def __setup(self):
         self.__make_dirs()
         self.__assign_executable_cwds()
         self.__setup_tracers()
+
+        self.__create_colored_pages()
 
         self.log("Writing %d proc entries" % len(self.proc_entries))
         map(methodcaller('write_proc'), self.proc_entries)
@@ -229,6 +294,8 @@ class Experiment(object):
         self.log("Stopping regular tracers")
         map(methodcaller('stop_tracing'), self.regular_tracers)
 
+        os.system('sync')
+
     def log(self, msg):
         print("[Exp %s]: %s" % (self.name, msg))
 
@@ -253,8 +320,11 @@ class Experiment(object):
                 self.__teardown()
         finally:
             self.log("Switching back to Linux scheduler")
-            self.__to_linux()
-
+            try:
+                self.__to_linux()
+            except Exception as e:
+                print(e)
+                
         if succ:
             self.__save_results()
             self.log("Experiment done!")

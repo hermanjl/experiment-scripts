@@ -59,7 +59,7 @@ def main():
     if opts.list_gens or opts.described:
         return 0
 
-    params = filter(lambda x : re.match("\w+=\w+", x), args)
+    params = filter(lambda x : re.match("\w+=[\.\w]+", x), args)
 
     # Ensure some generator is loaded
     args = list(set(args) - set(params))

@@ -243,8 +243,9 @@ TP_TYPE = """#if $type != 'unmanaged'
 /proc/sys/litmus/color/preempt_cache{0}
 #end if"""
 
-# Always add some pages
-TP_ADD = """/proc/sys/litmus/color/add_pages{1}"""
+# Now done by experiment.py
+# # Always add some pages
+# TP_ADD = """/proc/sys/litmus/color/add_pages{1}"""
 
 # Use special spin for color tasks
 TP_COLOR_BASE = """colorspin -y $t.id -x $t.colorcsv -q $t.wss -l $t.loops """
@@ -253,8 +254,8 @@ TP_COLOR_B = TP_BASE.format("b", TP_COLOR_BASE + "-p $t.cpu ")
 TP_COLOR_C = TP_BASE.format("c", TP_COLOR_BASE)
 
 # Not even sure job splitting is still possible
-TP_CHUNK = """#if $chunk_size > 0
-/proc/sys/litmus/color/chunk_size{$chunk_size}
+TP_CHUNK = """#if $chunk_size_ns > 0
+/proc/sys/litmus/color/chunk_size{$chunk_size_ns}
 #end if"""
 
 COLOR_TYPES = ['scheduling', 'locking', 'unmanaged']
@@ -264,7 +265,7 @@ class ColorMcGenerator(McGenerator):
 
     def __init__(self, params = {}):
         super(ColorMcGenerator, self).__init__("MC",
-            templates=[TP_ADD, TP_TYPE, TP_CHUNK, TP_COLOR_B, TP_COLOR_C],
+            templates=[TP_TYPE, TP_CHUNK, TP_COLOR_B, TP_COLOR_C],
             options=self.__make_options(),
             params=self.__extend_params(params))
 
@@ -336,7 +337,7 @@ class ColorMcGenerator(McGenerator):
                           'System colors (cache size / ways).'),
                 GenOption('page_size', int, self.cache.page,
                           'System page size.'),
-                GenOption('wss', [float, int], .5,
+                GenOption('wss', [float, int], .25,
                           'Task working set sizes. Can be expressed as a fraction ' +
                           'of the cache.')]
 
@@ -359,7 +360,8 @@ class ColorMcGenerator(McGenerator):
             if pages > cache_pages:
                 raise Exception('WSS (%d) larger than the cache!' % (wss))
 
-        return pages
+        # Divide in half for HRT, SRT divide
+        return pages / 2
 
 
     def __make_csv(self, task):
@@ -410,11 +412,23 @@ class ColorMcGenerator(McGenerator):
             hrt_colorer = EvilColorScheme(c, w)
             srt_colorer = hrt_colorer
         else:
+            # Divide cache between hrt and srt
+            c /= 2
             srt_colorer = RandomColorScheme(c, w)
             hrt_colorer = BlockColorScheme(c, w, way_first=True)
 
         hrt_colorer.color(task_system['lvlb'], pages_needed)
         srt_colorer.color(task_system['lvlc'], pages_needed)
+
+        # This check has saved me a lot of trouble already, leave it in
+        for t in task_system['lvlb'] + task_system['lvlc']:
+            if sum(t.colors.values()) * params['page_size'] < real_wss:
+                raise Exception("Didn't color enough pages for %s" % params)
+
+        if params['type'] != 'unmanaged':
+            # Bump srt into the second half of the cache
+            for t in task_system['lvlc']:
+                t.colors = {colors+c:w for colors, w in t.colors.iteritems()}
 
         for t in all_tasks:
             self.__make_csv(t)
