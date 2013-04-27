@@ -41,29 +41,23 @@ class TimeTracker:
         # any task is always skipped
         self.last_record = None
 
-        self.stored_dur = 0
-
     def store_time(self, next_record):
         '''End duration of time.'''
         dur  = (self.last_record.when - self.begin) if self.last_record else -1
-        dur += self.stored_dur
 
         if self.next_job == next_record.job:
-            self.last_record = next_record
-
             if self.last_record:
                 self.matches += 1
 
-            if self.join_job and self.next_job == self.last_record.job:
-                self.stored_dur += dur
-            elif dur > 0:
+            self.last_record = next_record
+
+            if dur > 0:
                 self.max  = max(self.max, dur)
                 self.avg *= float(self.num / (self.num + 1))
                 self.num += 1
                 self.avg += dur / float(self.num)
 
                 self.begin = 0
-                self.stored_dur = 0
                 self.next_job   = 0
         else:
             self.disjoints += 1
@@ -81,7 +75,6 @@ class TimeTracker:
 class LeveledArray(object):
     """Groups statistics by the level of the task to which they apply"""
     def __init__(self):
-        self.name = name
         self.vals = defaultdict(lambda: defaultdict(lambda:[]))
 
     def add(self, name, level, value):
@@ -92,12 +85,12 @@ class LeveledArray(object):
     def write_measurements(self, result):
         for stat_name, stat_data in self.vals.iteritems():
             for level, values in stat_data.iteritems():
-                if not values or not sum(values):
-                    log_once(SKIP_MSG, SKIP_MSG % stat_name)
-                    continue
+                # if not values or not sum(values):
+                #     log_once(SKIP_MSG, SKIP_MSG % stat_name)
+                #     continue
 
-                name = "%s%s" % ("%s-" % level if level else "", stat_name)
-                result[name] = Measurement(name).from_array(arr)
+                name = "%s%s" % ("%s-" % level.capitalize() if level else "", stat_name)
+                result[name] = Measurement(name).from_array(values)
 
 # Map of event ids to corresponding class and format
 record_map = {}
@@ -201,8 +194,9 @@ class ParamRecord(SchedRecord):
               ('class', c_uint8),  ('level', c_uint8)]
 
     def process(self, task_dict):
+        level  = chr(97 + self.level)
         params = TaskParams(self.wcet, self.period,
-                            self.partition, self.level)
+                            self.partition, level)
         task_dict[self.pid].params = params
 
 class ReleaseRecord(SchedRecord):
@@ -214,11 +208,13 @@ class ReleaseRecord(SchedRecord):
         if data.params:
             data.misses.start_time(self, self.when + data.params.period)
 
+NSEC_PER_USEC = 1000
 class CompletionRecord(SchedRecord):
-    FIELDS = [('when', c_uint64)]
+    FIELDS = [('when', c_uint64), ('load', c_uint64)]
 
     def process(self, task_dict):
         task_dict[self.pid].misses.store_time(self)
+        task_dict[self.pid].loads += [float(self.load) / NSEC_PER_USEC ]
 
 class BlockRecord(SchedRecord):
     FIELDS = [('when', c_uint64)]
@@ -232,9 +228,24 @@ class ResumeRecord(SchedRecord):
     def process(self, task_dict):
         task_dict[self.pid].blocks.store_time(self)
 
+class SwitchToRecord(SchedRecord):
+    FIELDS = [('when', c_uint64)]
+
+    def process(self, task_dict):
+        task_dict[self.pid].execs.start_time(self)
+
+class SwitchAwayRecord(SchedRecord):
+    FIELDS = [('when', c_uint64)]
+
+    def process(self, task_dict):
+        task_dict[self.pid].execs.store_time(self)
+
+
 # Map records to sched_trace ids (see include/litmus/sched_trace.h
 register_record(2, ParamRecord)
 register_record(3, ReleaseRecord)
+register_record(5, SwitchToRecord)
+register_record(6, SwitchAwayRecord)
 register_record(7, CompletionRecord)
 register_record(8, BlockRecord)
 register_record(9, ResumeRecord)
@@ -250,7 +261,8 @@ def create_task_dict(data_dir, work_dir = None):
     output_file = "%s/out-st" % work_dir
 
     task_dict = defaultdict(lambda :
-                            TaskData(None, 1, TimeTracker(), TimeTracker()))
+                            TaskData(None, 1, [], TimeTracker(),
+                                     TimeTracker(), TimeTracker(True)))
 
     bin_names = [f for f in os.listdir(data_dir) if re.match(bin_files, f)]
     if not len(bin_names):
@@ -281,11 +293,11 @@ def extract_sched_data(result, data_dir, work_dir):
             # Currently unknown where these invalid tasks come from...
             continue
 
-        level = tdata.config.level
+        level = tdata.params.level
         miss  = tdata.misses
 
         record_loss = float(miss.disjoints)/(miss.matches + miss.disjoints)
-        stat_data("record-loss", level, record_loss)
+        stat_data.add("record-loss", level, record_loss)
 
         if record_loss > conf.MAX_RECORD_LOSS:
             log_once(LOSS_MSG)
@@ -294,26 +306,27 @@ def extract_sched_data(result, data_dir, work_dir):
         miss_ratio = float(miss.num) / miss.matches
         avg_tard = miss.avg * miss_ratio
 
-        stat_data("miss-ratio", level, miss_ratio)
+        stat_data.add("miss-ratio", level, miss_ratio)
 
-        stat_data("max-tard",   level, miss.max / tdata.params.period)
-        stat_data("avg-tard",   level, avg_tard / tdata.params.period)
+        stat_data.add("max-tard",   level, miss.max / tdata.params.period)
+        stat_data.add("avg-tard",   level, avg_tard / tdata.params.period)
 
-        stat_data("avg-block",  level, tdata.blocks.avg / NSEC_PER_MSEC)
-        stat_data("max-block",  level, tdata.blocks.max / NSEC_PER_MSEC)
+        stat_data.add("avg-block",  level, tdata.blocks.avg / NSEC_PER_MSEC)
+        stat_data.add("max-block",  level, tdata.blocks.max / NSEC_PER_MSEC)
+
+        if tdata.params.level == 'b':
+            stat_data.add('LOAD', tdata.params.level, tdata.loads)
 
     stat_data.write_measurements(result)
 
-def extract_mc_data(result, data_dir, base_dir):
-    task_dict = get_task_data(data_dir)
-    base_dict = get_task_data(base_dir)
+def extract_scaling_data(result, data_dir, base_dir):
+    log_once("Scaling factor extraction currently broken, disabled.")
+    return
+
+    task_dict = create_task_dict(data_dir)
+    base_dict = create_task_dict(base_dir)
 
     stat_data = LeveledArray()
-
-    # Only level B loads are measured
-    for tdata in filter(task_dict.iteritems(), lambda x: x.level == 'b'):
-        stat_data.add('load', tdata.config.level, tdata.loads)
-
     tasks_by_config = defaultdict(lambda: ScaleData([], []))
 
     # Add task execution times in order of pid to tasks_by_config
@@ -324,11 +337,11 @@ def extract_mc_data(result, data_dir, base_dir):
         for pid in sorted(tasks.keys()):
             tdata = tasks[pid]
 
-        tlist  = getattr(tasks_by_config[tdata.params], field)
-        tlist += [tdata.execs]
+            tlist  = getattr(tasks_by_config[tdata.params], field)
+            tlist += [tdata.execs]
 
     # Write scaling factors
-    for config, scale_data in tasks_by_config:
+    for config, scale_data in tasks_by_config.iteritems():
         if len(scale_data.reg_tasks) != len(scale_data.base_tasks):
             # Can't make comparison if different numbers of tasks!
             continue

@@ -1,7 +1,7 @@
 from collections import namedtuple
 import matplotlib.pyplot as plot
 
-class Style(namedtuple('SS', ['marker', 'line', 'color'])):
+class Style(namedtuple('SS', ['marker', 'color', 'line'])):
     def fmt(self):
         return self.marker + self.line + self.color
 
@@ -24,11 +24,12 @@ class StyleMap(object):
                 t = float if float(value) % 1.0 else int
             except:
                 t = bool if value in ['True','False'] else str
-            return StyleMap.ORDER.index(t)
-        col_list = sorted(col_list, key=type_priority)
+            # return StyleMap.ORDER.index(t)
+            return len(col_values[column])
+        col_list = sorted(col_list, key=type_priority, reverse=True)
 
         # TODO: undo this, switch to popping mechanism
-        for field, values in reversed([x for x in self.__get_all()._asdict().iteritems()]):
+        for field, values in [x for x in self.__get_all()._asdict().iteritems()]:
             if not col_list:
                 break
 
@@ -36,7 +37,10 @@ class StyleMap(object):
             value_dict  = {}
 
             for value in sorted(col_values[next_column]):
-                value_dict[value] = values.pop(0)
+                try:
+                    value_dict[value] = values.pop(0)
+                except Exception as e:
+                    raise e
 
             self.value_map[next_column] = value_dict
             self.field_map[next_column] = field
@@ -44,7 +48,7 @@ class StyleMap(object):
     def __get_all(self):
         '''A Style holding all possible values for each property.'''
         return Style(marker=list('.,ov^<>1234sp*hH+xDd|_'),
-                     line=['-', ':', '--'],
+                     line=['-', ':', '--', '_'],
                      color=list('bgrcmyk'))
 
     def get_style(self, kv):

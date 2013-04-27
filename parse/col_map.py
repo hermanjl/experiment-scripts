@@ -11,11 +11,14 @@ class ColMapBuilder(object):
         return ColMap(col_list, self.value_map)
 
     def try_add(self, column, value):
-        self.value_map[column].add( value )
+        self.value_map[column].add( str(value) )
 
     def try_remove(self, column):
         if column in self.value_map:
             del(self.value_map[column])
+
+    def __contains__(self, col):
+        return col in self.value_map
 
 class ColMap(object):
     def __init__(self, col_list, values = None):

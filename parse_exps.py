@@ -52,7 +52,7 @@ ExpData = namedtuple('ExpData', ['path', 'params', 'work_dir'])
 
 def parse_exp(exp_force_base):
     # Tupled for multiprocessing
-    exp, force, base_table = exp_force_base
+    exp, force, base_exp = exp_force_base
 
     result_file = exp.work_dir + "/exp_point.pkl"
     should_load = not force and os.path.exists(result_file)
@@ -81,11 +81,9 @@ def parse_exp(exp_force_base):
             # Write scheduling statistics into result
             st.extract_sched_data(result, exp.path, exp.work_dir)
 
-            # Write scaling factors into result
-            if base_table and exp.params in base_table:
-                base_exp = base_table[exp.params]
-                if base_exp != exp:
-                    st.extract_mc_data(result, exp.path, base_exp.path)
+            if base_exp:
+                # Write scaling factors into result
+                st.extract_scaling_data(result, exp.path, base_exp.path)
 
             with open(result_file, 'wb') as f:
                 pickle.dump(result, f)
@@ -138,18 +136,22 @@ def load_exps(exp_dirs, cm_builder, force):
     return exps
 
 
-def make_base_table(cmd_scale, col_map, exps):
+def make_base_table(cmd_scale, builder, exps):
     if not cmd_scale:
         return None
 
     # Configuration key for task systems used to calculate task
     # execution scaling factors
-    [(param, value)] = dict(re.findall("(.*)=(.*)", cmd_scale))
+    [(param, value)] = re.findall("(.*)=(.*)", cmd_scale)
 
-    if param not in col_map:
-        raise IOError("Base column '%s' not present in any parameters!" % param)
 
-    base_table = TupleTable(copy.deepcopy(col_map))
+    if param not in builder:
+        com.log_once("Base column '%s' not present in any parameters!" % param)
+        com.log_once("Scaling factors will not be included.")
+
+    builder.try_remove(param)
+    base_map = builder.build()
+    base_table = TupleTable(base_map)
 
     # Fill table with exps who we will scale against
     for exp in exps:
@@ -171,23 +173,35 @@ def get_dirs(args):
         return [os.getcwd()]
 
 
-def fill_table(table, exps, opts):
-    sys.stderr.write("Parsing data...\n")
+def get_bases(builder, exps, opts):
+    '''Return a matching array of experiments against which scaling factors
+    will be calculated.'''
+    bases = [None]*len(exps)
 
+    base_table = make_base_table(opts.scale_against, builder, exps)
+    if not base_table:
+        return bases
+
+    for i,exp in enumerate(exps):
+        if exp.params in base_table and base_table[exp.params] != exp:
+            bases[i] = base_table[exp.params]
+
+    return bases
+
+
+def fill_table(table, builder, exps, opts):
     procs  = min(len(exps), opts.processors)
     logged = multiprocessing.Manager().list()
+    bases  = get_bases(builder, exps, opts)
 
     sys.stderr.write("Parsing data...\n")
-
-    base_table = make_base_table(opts.scale_against,
-                                 table.get_col_map(), exps)
 
     pool = multiprocessing.Pool(processes=procs,
     # Share a list of previously logged messages amongst processes
     # This is for the com.log_once method to use
                 initializer=com.set_logged_list, initargs=(logged,))
 
-    pool_args = zip(exps, [opts.force]*len(exps), [base_table]*len(exps))
+    pool_args = zip(exps, [opts.force]*len(exps), bases)
     enum = pool.imap_unordered(parse_exp, pool_args, 1)
 
     try:
@@ -259,7 +273,7 @@ def main():
     col_map = builder.build()
     table = TupleTable(col_map)
 
-    fill_table(table, exps, opts)
+    fill_table(table, builder, exps, opts)
 
     if not table:
         sys.stderr.write("Found no data to parse!")
