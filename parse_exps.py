@@ -182,7 +182,8 @@ def get_bases(builder, exps, opts):
     will be calculated.'''
     bases = [None]*len(exps)
 
-    base_table = make_base_table(opts.scale_against, builder, exps)
+    base_table = make_base_table(opts.scale_against,
+                                 copy.deepcopy(builder), exps)
     if not base_table:
         return bases
 
