@@ -85,12 +85,12 @@ def plot_by_variable(details):
     axes.set_title(details.title)
 
     lines, labels = zip(*style_map.get_key())
-    axes.legend(tuple(lines), tuple(labels), prop={'size':10})
+    axes.legend(tuple(lines), tuple(labels), prop={'size':10}, loc=2)
 
     axes.set_ylabel(details.value)
     axes.set_xlabel(details.variable)
-    axes.set_xlim(0, axes.get_xlim()[1] + 1)
-    axes.set_ylim(0, axes.get_ylim()[1] + 1)
+    axes.set_xlim(0, axes.get_xlim()[1])
+    axes.set_ylim(0, axes.get_ylim()[1])
 
     plot.savefig(details.out, format=OUT_FORMAT)
 

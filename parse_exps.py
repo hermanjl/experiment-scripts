@@ -43,6 +43,10 @@ def parse_args():
     parser.add_option('-s', '--scale-against', dest='scale_against',
                       metavar='PARAM=VALUE', default="type=unmanaged",
                       help='calculate task scaling factors against these configs')
+    parser.add_option('-c', '--collapse', dest='collapse',
+                      action='store_true', default=False,
+                      help=('simplify graphs where possible by averaging ' +
+                            'parameter values which are numbers (dangerous)'))
 
     return parser.parse_args()
 
@@ -226,30 +230,80 @@ def fill_table(table, builder, exps, opts):
     sys.stderr.write('\n')
 
 
-def write_output(table, opts):
+def write_csvs(table, out, print_empty=False):
     reduced_table = table.reduce()
 
+    # Write out csv directories for all variable params
+    dir_map = reduced_table.to_dir_map()
+
+    # No csvs to write, assume user meant to print out data
+    if dir_map.is_empty():
+        if print_empty:
+            sys.stderr.write("Too little data to make csv files, " +
+                             "printing results.\n")
+            for key, exp in table:
+                for e in exp:
+                    print(e)
+    else:
+        dir_map.write(out)
+
+
+def write_collapsed_csvs(table, opts):
+    sys.stderr.write("Collapse option specified. "
+                     "Only one numeric column at a time will be plotted.\n"
+                     "The values of others will be averaged. "
+                     "This is dangerous and can hide important trends!\n")
+
+    original_map = table.get_col_map()
+
+    builder = ColMapBuilder()
+    numeric_cols = []
+
+    # Add only nonnumeric fields to builder
+    for column in original_map.columns():
+        numeric = True
+        for v in original_map.get_values()[column]:
+            try:
+                float(v)
+            except ValueError:
+                numeric = False
+                builder.try_add(column, v)
+        if numeric:
+            numeric_cols += [column]
+
+    for num_column in numeric_cols:
+        # Only going to consider a single number column at a time
+        for num_value in original_map.get_values()[column]:
+            builder.try_add(num_column, num_value)
+
+        next_map = builder.build()
+        next_table = TupleTable(next_map)
+
+        # Re-sort data into new table using this new key
+        for mapped_key, points in table:
+            kv = original_map.get_kv(mapped_key)
+            next_table[kv] += points
+
+        write_csvs(next_table, opts.out)
+
+        builder.try_remove(num_column)
+
+
+def write_output(table, opts):
     if opts.write_map:
         sys.stderr.write("Writing python map into %s...\n" % opts.out)
+        reduced_table = table.reduce()
         reduced_table.write_map(opts.out)
     else:
         if opts.force and os.path.exists(opts.out):
             sh.rmtree(opts.out)
 
-        # Write out csv directories for all variable params
-        dir_map = reduced_table.to_dir_map()
+        sys.stderr.write("Writing csvs into %s...\n" % opts.out)
 
-        # No csvs to write, assume user meant to print out data
-        if dir_map.is_empty():
-            if not opts.verbose:
-                sys.stderr.write("Too little data to make csv files, " +
-                                 "printing results.\n")
-                for key, exp in table:
-                    for e in exp:
-                        print(e)
+        if opts.collapse:
+            write_collapsed_csvs(table, opts)
         else:
-            sys.stderr.write("Writing csvs into %s...\n" % opts.out)
-            dir_map.write(opts.out)
+            write_csvs(table, opts.out, not opts.verbose)
 
 
 def main():
