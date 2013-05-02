@@ -98,15 +98,38 @@ record_map = {}
 RECORD_SIZE   = 24
 NSEC_PER_MSEC = 1000000
 
+def bits_to_bytes(bits):
+    '''Includes padding'''
+    return bits / 8 + (1 if bits%8 else 0)
+
+def field_bytes(fields):
+    fbytes = 0
+    fbits  = 0
+    for f in fields:
+        flist = list(f)
+
+        if len(flist) > 2:
+            # Specified a bitfield
+            fbits += flist[2]
+        else:
+            # Only specified a type, use types size
+            fbytes += sizeof(list(f)[1])
+
+            # Bitfields followed by a byte will cause any incomplete
+            # bytes to be turned into full bytes
+            fbytes += bits_to_bytes(fbits)
+            fbits   = 0
+
+    fbytes += bits_to_bytes(fbits)
+    return fbytes + fbits
+
 def register_record(id, clazz):
     fields = clazz.FIELDS
-
-    fsize = lambda fields : sum([sizeof(list(f)[1]) for f in fields])
-    diff  = RECORD_SIZE - fsize(SchedRecord.FIELDS) - fsize(fields)
+    diff = RECORD_SIZE - field_bytes(SchedRecord.FIELDS) - field_bytes(fields)
 
     # Create extra padding fields to make record the proper size
     # Creating one big field of c_uint64 and giving it a size of 8*diff
-    # _shoud_ work, but doesn't. This is an uglier way of accomplishing
+    # _should_ work, but doesn't. This is an uglier way of accomplishing
     # the same goal
     for d in range(diff):
         fields += [("extra%d" % d, c_char)]

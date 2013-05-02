@@ -28,6 +28,7 @@ class EdfGenerator(gen.Generator):
         pdist = self._create_dist('period',
                                   exp_params['periods'],
                                   gen.NAMED_PERIODS)
+
         udist = self._create_dist('utilization',
                                   exp_params['utils'],
                                   gen.NAMED_UTILIZATIONS)

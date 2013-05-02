@@ -182,7 +182,7 @@ def ft_freq():
 
 
 def kernel():
-    return subprocess.check_output(["uname", "-r"])
+    return subprocess.check_output(["uname", "-r"]).strip("\n")
 
 def is_executable(fname):
     '''Return whether the file passed in is executable'''
@@ -212,4 +212,7 @@ def log_once(id, msg = None):
         __logged += [id]
         if indent:
             msg = '   ' + msg.strip('\t').replace('\n', '\n\t')
-        sys.stderr.write('\n' + msg + '\n')
+        sys.stderr.write('\n' + msg.strip('\n') + '\n')
+
+def get_cmd():
+    return os.path.split(sys.argv[0])[1]

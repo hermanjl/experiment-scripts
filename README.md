@@ -156,16 +156,14 @@ You can specify your own spin programs to run as well instead of rtspin by putti
 $ echo "colorspin -f color1.csv 10 20" > test.sched
 ```
 
-You can specify parameters for an experiment in a file instead of on the command line using params.py (the `-p` option lets you choose the name of this file if `params.py` is not for you):
+You can specify parameters for an experiment in a file instead of on the command line using params.py:
 
 ```bash
 $ echo "{'scheduler':'GSN-EDF', 'duration':10}" > params.py
 $ run_exps.py test.sched
 ```
 
-You can also run multiple experiments with a single command, provided a directory with a schedule file exists for each. By default, the program will look for sched.py for the schedule file and params.py for the parameter file, but this behavior can be changed using the `-p` and `-c` options.
-
-You can include non-relevant parameters which `run_exps.py` does not understand in `params.py`. These parameters will be saved with the data output by `run_exps.py`. This is useful for tracking variations in system parameters versus experimental results. In the following example, multiple experiments are demonstrated and an extra parameter `test-param` is included:
+You can also run multiple experiments with a single command, provided a directory with a schedule file exists for each. You can include non-relevant parameters which `run_exps.py` does not understand in `params.py`. These parameters will be saved with the data output by `run_exps.py`. This is useful for tracking variations in system parameters versus experimental results. In the following example, multiple experiments are demonstrated and an extra parameter `test-param` is included:
 
 ```bash
 $ mkdir test1

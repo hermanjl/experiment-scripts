@@ -14,12 +14,14 @@ BINS = {'rtspin'    : get_executable_hint('rtspin', 'liblitmus'),
         # Optional, as sched_trace is not a publically supported repository
         'st_show'   : get_executable_hint('st_show', 'sched_trace', True)}
 
-'''Names of output files.'''
-FILES = {'ft_data'    : 'ft.bin',
-         'ft_matches' : r'(ft.*\.bin$)|(.*\.ft)',
-         'linux_data' : 'trace.dat',
-         'sched_data' : 'st-{}.bin',
-         'log_data'   : 'trace.slog'}
+'''Names of data files.'''
+FILES = {'params_file' : 'params.py',
+         'sched_file'  : 'sched.py',
+         'ft_data'     : 'ft.bin',
+         'ft_matches'  : r'(ft.*\.bin$)|(.*\.ft)',
+         'linux_data'  : 'trace.dat',
+         'sched_data'  : 'st-{}.bin',
+         'log_data'    : 'trace.slog'}
 
 '''Default parameter names in params.py.'''
 PARAMS = {'sched'   : 'scheduler',       # Scheduler used by run_exps
@@ -35,9 +37,7 @@ PARAMS = {'sched'   : 'scheduler',       # Scheduler used by run_exps
           }
 
 '''Default values for program options.'''
-DEFAULTS = {'params_file' : 'params.py',
-            'sched_file'  : 'sched.py',
-            'duration'    : 10,
+DEFAULTS = {'duration'    : 10,
             'prog'        : 'rtspin',
             'out-gen'     : 'exps',
             'out-run'     : 'run-data',

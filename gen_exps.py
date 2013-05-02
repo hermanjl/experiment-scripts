@@ -43,6 +43,14 @@ def load_file(fname):
     except:
            raise IOError("Invalid generation file: %s" % fname)
 
+def print_descriptions(described):
+    for generator in described.split(','):
+        if generator not in gen.get_generators():
+            sys.stderr.write("No generator '%s'\n" % generator)
+        else:
+            print("Generator '%s', " % generator)
+            gen.get_generators()[generator]().print_help()
+
 def main():
     opts, args = parse_args()
 
@@ -50,12 +58,7 @@ def main():
     if opts.list_gens:
         print(", ".join(gen.get_generators()))
     if opts.described != None:
-        for generator in opts.described.split(','):
-            if generator not in gen.get_generators():
-                sys.stderr.write("No generator '%s'\n" % generator)
-            else:
-                print("Generator '%s', " % generator)
-                gen.get_generators()[generator]().print_help()
+        print_descriptions(opts.described)
     if opts.list_gens or opts.described:
         return 0
 

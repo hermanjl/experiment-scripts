@@ -43,6 +43,9 @@ class Experiment(object):
         self.exec_err = None
         self.tracer_types = tracer_types
 
+        self.regular_tracers = []
+        self.exact_tracers = []
+
     def __setup_tracers(self):
         tracers = [ t(self.working_dir) for t in self.tracer_types ]
 
@@ -63,8 +66,13 @@ class Experiment(object):
                      Experiment.INTERRUPTED_DIR)
             interrupted = "%s/%s" % (os.path.split(self.working_dir)[0],
                                      Experiment.INTERRUPTED_DIR)
+            old_int = "%s/%s" % (self.working_dir, Experiment.INTERRUPTED_DIR)
+
             if os.path.exists(interrupted):
                 sh.rmtree(interrupted)
+            if os.path.exists(old_int):
+                sh.rmtree(old_int)
+
             os.rename(self.working_dir, interrupted)
 
         os.mkdir(self.working_dir)
@@ -78,21 +86,24 @@ class Experiment(object):
             executable.cwd = self.working_dir
         map(assign_cwd, self.executables)
 
-    def __kill_all(self):
-        if lu.waiting_tasks():
-            released = lu.release_tasks()
-            self.log("Re-released %d tasks" % released)
+    def __try_kill_all(self):
+        try:
+            if lu.waiting_tasks():
+                released = lu.release_tasks()
+                self.log("Re-released %d tasks" % released)
+
+                time.sleep(1)
+
+            self.log("Killing all tasks")
+            for e in self.executables:
+                try:
+                    e.kill()
+                except:
+                    pass
 
             time.sleep(1)
-
-        self.log("Killing all tasks")
-        for e in self.executables:
-            try:
-                e.kill()
-            except:
-                pass
-
-        time.sleep(1)
+        except:
+            self.log("Failed to kill all tasks.")
 
     def __strip_path(self, path):
         '''Shorten path to something more readable.'''
@@ -194,6 +205,7 @@ class Experiment(object):
 
         sched = lu.scheduler()
         if sched != "Linux":
+            self.log("Switching back to Linux scheduler")
             try:
                 lu.switch_scheduler("Linux")
             except:
@@ -303,6 +315,7 @@ class Experiment(object):
         self.__to_linux()
 
         succ = False
+        exception = None
         try:
             self.__setup()
 
@@ -311,20 +324,21 @@ class Experiment(object):
                 self.log("Saving results in %s" % self.finished_dir)
                 succ = True
             except Exception as e:
+                exception = e
+
                 # Give time for whatever failed to finish failing
                 time.sleep(2)
-                self.__kill_all()
 
-                raise e
-            finally:
-                self.__teardown()
+                self.__try_kill_all()
         finally:
-            self.log("Switching back to Linux scheduler")
             try:
+                self.__teardown()
                 self.__to_linux()
             except Exception as e:
-                print(e)
-                
+                exception = exception or e
+            finally:
+                if exception: raise exception
+
         if succ:
             self.__save_results()
             self.log("Experiment done!")

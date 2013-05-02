@@ -6,7 +6,7 @@ import shutil as sh
 
 from Cheetah.Template import Template
 from common import get_config_option,num_cpus,recordtype,log_once
-from config.config import DEFAULTS,PARAMS
+from config.config import FILES,PARAMS
 from gen.dp import DesignPointGenerator
 from parse.col_map import ColMapBuilder
 
@@ -129,7 +129,7 @@ class Generator(object):
 
     def _write_schedule(self, params):
         '''Write schedule file using current template for @params.'''
-        sched_file = self.out_dir + "/" + DEFAULTS['sched_file']
+        sched_file = self.out_dir + "/" + FILES['sched_file']
         with open(sched_file, 'wa') as f:
             f.write(str(Template(self.template, searchList=[params])))
 
@@ -143,7 +143,7 @@ class Generator(object):
         else:
             tasks = 0
 
-        exp_params_file = self.out_dir + "/" + DEFAULTS['params_file']
+        exp_params_file = self.out_dir + "/" + FILES['params_file']
         with open(exp_params_file, 'wa') as f:
             params['scheduler'] = self.scheduler
             pprint.pprint(params, f)
