@@ -48,7 +48,7 @@ class ColMap(object):
 
         for col in self.col_list:
             if col not in kv:
-                key += (None,)
+                key += (str(None),)
             else:
                 key += (str(kv[col]),)
 

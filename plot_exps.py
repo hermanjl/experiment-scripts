@@ -1,7 +1,17 @@
 #!/usr/bin/env python
 from __future__ import print_function
 
+# Without this trickery, matplotlib uses the current X windows session
+# to create graphs. Problem 1 with this: requires user has an X windows,
+# through ssh -X or otherws. Problem 2: it kills the performance on the
+# computer running the X session, even if that computer isn't the one
+# running plot_exps.py!
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plot
+
+import common as com
+import multiprocessing
 import os
 import shutil as sh
 import sys
@@ -9,11 +19,11 @@ import traceback
 
 from collections import namedtuple
 from config.config import DEFAULTS
-from multiprocessing import Pool, cpu_count
+
 from optparse import OptionParser
 from parse.col_map import ColMap,ColMapBuilder
 from parse.dir_map import DirMap
-from plot.style import StyleMap
+from plot.style import make_styler
 
 def parse_args():
     parser = OptionParser("usage: %prog [options] [csv_dir]...")
@@ -23,7 +33,8 @@ def parse_args():
                       default=DEFAULTS['out-plot'])
     parser.add_option('-f', '--force', action='store_true', default=False,
                       dest='force', help='overwrite existing data')
-    parser.add_option('-p', '--processors', default=max(cpu_count() - 1, 1),
+    parser.add_option('-p', '--processors',
+                      default=max(multiprocessing.cpu_count() - 1, 1),
                       type='int', dest='processors',
                       help='number of threads for processing')
 
@@ -53,8 +64,7 @@ def plot_by_variable(details):
     builder = ColMapBuilder()
     config_nodes = []
 
-    # Generate mapping of (column)=>(line property to vary) for consistently
-    # formatted plots
+    # Decode file names into configuration dicts
     for line_path, line_node in details.node.children.iteritems():
         encoded = line_path[:line_path.index(".csv")]
 
@@ -68,14 +78,13 @@ def plot_by_variable(details):
         config_nodes += [(line_config, line_node)]
 
     col_map   = builder.build()
-    style_map = StyleMap(col_map.columns(), col_map.get_values())
+    style_map = make_styler(col_map)
 
     figure = plot.figure()
-    axes = figure.add_subplot(111)
+    axes   = figure.add_subplot(111)
 
     # Create a line for each file node and its configuration
     for line_config, line_node in config_nodes:
-        # Create line style to match this configuration
         style  = style_map.get_style(line_config)
         values = sorted(line_node.values, key=lambda tup: tup[0])
         xvalues, yvalues = zip(*values)
@@ -85,14 +94,19 @@ def plot_by_variable(details):
     axes.set_title(details.title)
 
     lines, labels = zip(*style_map.get_key())
-    axes.legend(tuple(lines), tuple(labels), prop={'size':10}, loc=2)
+    axes.legend(tuple(lines), tuple(labels), prop={'size':10},
+	    # This code places the legend slightly to the right of the plot
+        bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
 
     axes.set_ylabel(details.value)
     axes.set_xlabel(details.variable)
     axes.set_xlim(0, axes.get_xlim()[1])
     axes.set_ylim(0, axes.get_ylim()[1])
 
-    plot.savefig(details.out, format=OUT_FORMAT)
+    plot.savefig(details.out, format=OUT_FORMAT,
+    	# Using 'tight' causes savefig to rescale the image for non-plot
+	    # artists, which in our case is just the legend
+        bbox_inches='tight')
 
     return True
 
@@ -125,8 +139,12 @@ def plot_dir(data_dir, out_dir, max_procs, force):
     if not plot_details:
         return
 
-    procs = min(len(plot_details), max_procs)
-    pool  = Pool(processes=procs)
+    procs  = min(len(plot_details), max_procs)
+    logged = multiprocessing.Manager().list()
+
+    pool   = multiprocessing.Pool(processes=procs,
+                initializer=com.set_logged_list, initargs=(logged,))
+
     enum  = pool.imap_unordered(plot_wrapper, plot_details)
 
     try:
